@@ -51,6 +51,7 @@ export type {
   ChannelSettings,
   ZApiCredentials,
   MetaCloudCredentials,
+  MetaInstagramCredentials,
   SmtpCredentials,
   ResendCredentials,
   CreateChannelInput,
@@ -190,6 +191,24 @@ export type {
 } from './webhook.types';
 
 export { transformWebhookEvent } from './webhook.types';
+
+// =============================================================================
+// ROUTING RULES
+// =============================================================================
+
+export type {
+  DbLeadRoutingRule,
+  LeadRoutingRule,
+  LeadRoutingRuleView,
+  CreateLeadRoutingRuleInput,
+  UpdateLeadRoutingRuleInput,
+  LeadRoutingRuleFilters,
+} from './routing.types';
+
+export {
+  transformLeadRoutingRule,
+  transformLeadRoutingRuleToDb,
+} from './routing.types';
 
 // =============================================================================
 // COMMON TYPES

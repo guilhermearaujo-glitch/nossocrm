@@ -389,3 +389,51 @@ export function useAssignConversation() {
     },
   });
 }
+
+/**
+ * Delete a conversation and all its messages.
+ * Use with caution - this is a destructive action.
+ */
+export function useDeleteConversation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (conversationId: string) => {
+      // Delete messages first (FK constraint)
+      const { error: messagesError } = await supabase
+        .from('messaging_messages')
+        .delete()
+        .eq('conversation_id', conversationId);
+
+      if (messagesError) throw messagesError;
+
+      // Then delete conversation
+      const { error: conversationError } = await supabase
+        .from('messaging_conversations')
+        .delete()
+        .eq('id', conversationId);
+
+      if (conversationError) throw conversationError;
+
+      return conversationId;
+    },
+    onSuccess: (deletedId) => {
+      // Remove from all conversation caches
+      queryClient.setQueriesData(
+        { queryKey: queryKeys.messagingConversations.all },
+        (old: ConversationView[] | undefined) => {
+          if (!old) return old;
+          return old.filter((conv) => conv.id !== deletedId);
+        }
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.messagingConversations.all,
+      });
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.messagingConversations.unreadCount(),
+      });
+    },
+  });
+}

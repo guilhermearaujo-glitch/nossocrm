@@ -20,13 +20,16 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 // =============================================================================
 
 interface MetaCloudWebhookPayload {
-  object: "whatsapp_business_account";
+  object: "whatsapp_business_account" | "instagram";
   entry: MetaWebhookEntry[];
 }
 
 interface MetaWebhookEntry {
   id: string;
-  changes: MetaWebhookChange[];
+  changes?: MetaWebhookChange[];
+  // Instagram Messenger Platform uses `messaging` instead of `changes`
+  time?: number;
+  messaging?: InstagramMessagingEvent[];
 }
 
 interface MetaWebhookChange {
@@ -112,6 +115,28 @@ interface MessageContent {
   latitude?: number;
   longitude?: number;
   name?: string;
+}
+
+// Instagram Messenger Platform types
+interface InstagramMessagingEvent {
+  sender: { id: string };
+  recipient: { id: string };
+  timestamp: number;
+  message?: InstagramMessage;
+  delivery?: { mids: string[]; watermark: number };
+  read?: { watermark: number };
+}
+
+interface InstagramMessage {
+  mid: string;
+  text?: string;
+  attachments?: InstagramAttachment[];
+  is_echo?: boolean;
+}
+
+interface InstagramAttachment {
+  type: string;
+  payload: { url?: string };
 }
 
 // =============================================================================
@@ -322,7 +347,7 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  // Fetch channel with business unit info for auto-create features
+  // Fetch channel with business unit info
   const { data: channel, error: channelErr } = await supabase
     .from("messaging_channels")
     .select(`
@@ -331,12 +356,11 @@ Deno.serve(async (req) => {
       business_unit_id,
       external_identifier,
       credentials,
+      settings,
       status,
       business_unit:business_units(
         id,
-        name,
-        auto_create_deal,
-        default_board_id
+        name
       )
     `)
     .eq("id", channelId)
@@ -352,6 +376,7 @@ Deno.serve(async (req) => {
   }
 
   const credentials = channel.credentials as Record<string, unknown>;
+  const settings = channel.settings as Record<string, unknown>;
 
   // ==========================================================================
   // GET: Webhook Verification (Meta challenge)
@@ -366,7 +391,8 @@ Deno.serve(async (req) => {
       return json(400, { error: "Invalid mode" });
     }
 
-    const verifyToken = credentials?.verifyToken;
+    // Check verifyToken in settings first, then fallback to credentials (legacy)
+    const verifyToken = settings?.verifyToken || credentials?.verifyToken;
     if (!verifyToken || token !== verifyToken) {
       console.log("Verify token mismatch:", { received: token, expected: verifyToken });
       return json(403, { error: "Verification failed" });
@@ -412,12 +438,22 @@ Deno.serve(async (req) => {
     return json(400, { error: "JSON inválido" });
   }
 
-  // Validate payload structure
+  // Route by object type: WhatsApp vs Instagram
+  if (payload.object === "instagram") {
+    // ========================================================================
+    // INSTAGRAM WEBHOOK HANDLER
+    // ========================================================================
+    return await handleInstagramWebhookFlow(supabase, channel, channelId, payload);
+  }
+
   if (payload.object !== "whatsapp_business_account" || !payload.entry?.[0]?.changes?.[0]) {
     // Meta sends different objects for different purposes, just ACK if not ours
     return json(200, { ok: true, ignored: true });
   }
 
+  // ========================================================================
+  // WHATSAPP WEBHOOK HANDLER (existing logic)
+  // ========================================================================
   const change = payload.entry[0].changes[0];
   const value = change.value;
 
@@ -540,6 +576,38 @@ function determineEventType(value: MetaWebhookValue): string {
   return "unknown";
 }
 
+/**
+ * Fetch lead routing rule for a channel.
+ * Returns null if no rule exists or rule is disabled.
+ */
+async function getLeadRoutingRule(
+  supabase: ReturnType<typeof createClient>,
+  channelId: string
+): Promise<{
+  boardId: string;
+  stageId: string | null;
+} | null> {
+  const { data, error } = await supabase
+    .from("lead_routing_rules")
+    .select("board_id, stage_id, enabled")
+    .eq("channel_id", channelId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[Webhook] Error fetching lead routing rule:", error);
+    return null;
+  }
+
+  if (!data || !data.enabled || !data.board_id) {
+    return null;
+  }
+
+  return {
+    boardId: data.board_id,
+    stageId: data.stage_id,
+  };
+}
+
 async function handleInboundMessage(
   supabase: ReturnType<typeof createClient>,
   channel: {
@@ -550,8 +618,6 @@ async function handleInboundMessage(
     business_unit?: {
       id: string;
       name: string;
-      auto_create_deal: boolean;
-      default_board_id: string | null;
     } | null;
   },
   message: MetaWebhookMessage,
@@ -643,17 +709,20 @@ async function handleInboundMessage(
     if (convCreateErr) throw convCreateErr;
     conversationId = newConv.id;
 
-    // AUTO-CREATE DEAL if enabled on Business Unit
-    const bu = channel.business_unit;
-    if (bu?.auto_create_deal && bu.default_board_id && contactId) {
-      await autoCreateDeal(supabase, {
-        organizationId: channel.organization_id,
-        contactId,
-        boardId: bu.default_board_id,
-        conversationId,
-        contactName: senderName || phone,
-        businessUnitName: bu.name,
-      });
+    // AUTO-CREATE DEAL if lead routing rule exists for this channel
+    if (contactId) {
+      const routingRule = await getLeadRoutingRule(supabase, channel.id);
+      if (routingRule) {
+        await autoCreateDeal(supabase, {
+          organizationId: channel.organization_id,
+          contactId,
+          boardId: routingRule.boardId,
+          stageId: routingRule.stageId,
+          conversationId,
+          contactName: senderName || phone,
+          businessUnitName: channel.business_unit?.name || "Sem unidade",
+        });
+      }
     }
   }
 
@@ -700,8 +769,8 @@ async function handleInboundMessage(
 }
 
 /**
- * Auto-create a deal in the default board when a new conversation starts.
- * Only called if business_unit.auto_create_deal is true.
+ * Auto-create a deal when a new conversation starts.
+ * Uses stageId from lead_routing_rules, or falls back to first stage of board.
  */
 async function autoCreateDeal(
   supabase: ReturnType<typeof createClient>,
@@ -709,39 +778,49 @@ async function autoCreateDeal(
     organizationId: string;
     contactId: string;
     boardId: string;
+    stageId?: string | null;
     conversationId: string;
     contactName: string;
     businessUnitName: string;
+    source?: string;
   }
 ) {
   try {
-    // Get the first stage of the board (entry point)
-    const { data: firstStage, error: stageErr } = await supabase
-      .from("stages")
-      .select("id")
-      .eq("board_id", params.boardId)
-      .order("position", { ascending: true })
-      .limit(1)
-      .single();
+    let stageId = params.stageId;
 
-    if (stageErr || !firstStage) {
-      console.error("[Webhook] Could not find first stage for auto-create deal:", stageErr);
-      return;
+    // If no stageId provided, get the first stage of the board
+    if (!stageId) {
+      const { data: firstStage, error: stageErr } = await supabase
+        .from("board_stages")
+        .select("id")
+        .eq("board_id", params.boardId)
+        .order("order", { ascending: true })
+        .limit(1)
+        .single();
+
+      if (stageErr || !firstStage) {
+        console.error("[Webhook] Could not find first stage for auto-create deal:", stageErr);
+        return;
+      }
+      stageId = firstStage.id;
     }
 
     // Create the deal
-    const dealTitle = `${params.contactName} - WhatsApp`;
+    const source = params.source || "whatsapp";
+    const sourceLabel = source === "instagram" ? "Instagram" : "WhatsApp";
+    const dealTitle = `${params.contactName} - ${sourceLabel}`;
 
     const { data: newDeal, error: dealErr } = await supabase
       .from("deals")
       .insert({
         organization_id: params.organizationId,
         board_id: params.boardId,
-        stage_id: firstStage.id,
+        stage_id: stageId,
+        status: stageId, // CRM uses both stage_id and status - must be equal
         contact_id: params.contactId,
         title: dealTitle,
         value: 0,
-        source: "whatsapp",
+        source: source,
         metadata: {
           auto_created: true,
           created_from: "messaging_webhook",
@@ -838,6 +917,371 @@ async function handleStatusUpdate(
         .update({ window_expires_at: expirationTime.toISOString() })
         .eq("id", msg.conversation_id);
     }
+  }
+}
+
+// =============================================================================
+// INSTAGRAM HANDLERS
+// =============================================================================
+
+/**
+ * Handle the full Instagram webhook flow: dedup, process events, mark processed.
+ */
+async function handleInstagramWebhookFlow(
+  supabase: ReturnType<typeof createClient>,
+  channel: {
+    id: string;
+    organization_id: string;
+    business_unit_id: string;
+    external_identifier: string;
+    business_unit?: {
+      id: string;
+      name: string;
+      auto_create_deal: boolean;
+      default_board_id: string | null;
+    } | null;
+  },
+  channelId: string,
+  payload: MetaCloudWebhookPayload
+): Promise<Response> {
+  const entry = payload.entry?.[0];
+  if (!entry?.messaging?.[0]) {
+    return json(200, { ok: true, ignored: true });
+  }
+
+  const messagingEvent = entry.messaging[0];
+
+  // Generate stable event ID for deduplication
+  const externalEventId = generateInstagramEventId(messagingEvent);
+
+  const { error: eventInsertErr } = await supabase
+    .from("messaging_webhook_events")
+    .insert({
+      channel_id: channelId,
+      event_type: determineInstagramEventType(messagingEvent),
+      external_event_id: externalEventId,
+      payload: payload as unknown as Record<string, unknown>,
+      processed: false,
+    });
+
+  if (eventInsertErr?.message?.toLowerCase().includes("duplicate")) {
+    console.log(`[Webhook/IG] Duplicate event ignored: ${externalEventId}`);
+    return json(200, { ok: true, duplicate: true, event_id: externalEventId });
+  }
+
+  if (eventInsertErr) {
+    console.error("[Webhook/IG] Error logging webhook event:", eventInsertErr);
+  }
+
+  try {
+    // Skip echo messages (our own outbound messages echoed back)
+    if (messagingEvent.message?.is_echo) {
+      console.log(`[Webhook/IG] Echo message ignored: ${messagingEvent.message.mid}`);
+    }
+    // Handle delivery confirmations
+    else if (messagingEvent.delivery) {
+      for (const mid of messagingEvent.delivery.mids || []) {
+        await handleInstagramStatusUpdate(supabase, mid, "delivered", messagingEvent.timestamp);
+      }
+    }
+    // Handle read receipts
+    else if (messagingEvent.read) {
+      // Instagram read receipts don't include specific message IDs,
+      // they use a watermark timestamp (all messages before this are read)
+      console.log(`[Webhook/IG] Read receipt watermark: ${messagingEvent.read.watermark}`);
+    }
+    // Handle incoming messages
+    else if (messagingEvent.message && !messagingEvent.message.is_echo) {
+      await handleInstagramInboundMessage(supabase, channel, messagingEvent);
+    }
+
+    // Mark event as processed
+    await supabase
+      .from("messaging_webhook_events")
+      .update({ processed: true, processed_at: new Date().toISOString() })
+      .eq("channel_id", channelId)
+      .eq("external_event_id", externalEventId);
+
+    return json(200, { ok: true, event_type: determineInstagramEventType(messagingEvent) });
+  } catch (error) {
+    console.error("[Webhook/IG] Processing error:", error);
+
+    await supabase
+      .from("messaging_webhook_events")
+      .update({
+        processed: true,
+        processed_at: new Date().toISOString(),
+        error: error instanceof Error ? error.message : "Unknown error",
+      })
+      .eq("channel_id", channelId)
+      .eq("external_event_id", externalEventId);
+
+    // Return 200 to prevent Meta from retrying
+    return json(200, {
+      ok: false,
+      error: "Processing error",
+      details: error instanceof Error ? error.message : "Unknown error",
+    });
+  }
+}
+
+function generateInstagramEventId(event: InstagramMessagingEvent): string {
+  if (event.message) {
+    return `ig_msg_${event.message.mid}`;
+  }
+  if (event.delivery) {
+    return `ig_delivery_${event.delivery.watermark}_${event.sender.id}`;
+  }
+  if (event.read) {
+    return `ig_read_${event.read.watermark}_${event.sender.id}`;
+  }
+  return `ig_unknown_${event.sender.id}_${event.timestamp}`;
+}
+
+function determineInstagramEventType(event: InstagramMessagingEvent): string {
+  if (event.message?.is_echo) return "echo";
+  if (event.message) return "message_received";
+  if (event.delivery) return "delivery";
+  if (event.read) return "read";
+  return "unknown";
+}
+
+function extractInstagramContent(message: InstagramMessage): MessageContent {
+  // Text-only message
+  if (message.text && !message.attachments?.length) {
+    return { type: "text", text: message.text };
+  }
+
+  // Attachment message
+  if (message.attachments?.[0]) {
+    const attachment = message.attachments[0];
+    const url = attachment.payload?.url || "";
+
+    switch (attachment.type) {
+      case "image":
+        return {
+          type: "image",
+          mediaUrl: url,
+          mimeType: "image/jpeg",
+          caption: message.text,
+        };
+      case "video":
+        return {
+          type: "video",
+          mediaUrl: url,
+          mimeType: "video/mp4",
+          caption: message.text,
+        };
+      case "audio":
+        return {
+          type: "audio",
+          mediaUrl: url,
+          mimeType: "audio/mp4",
+        };
+      case "share":
+        // Instagram share (post, reel, story)
+        return {
+          type: "text",
+          text: message.text || `[Compartilhamento: ${url}]`,
+        };
+      default:
+        return {
+          type: "text",
+          text: message.text || `[${attachment.type}]`,
+        };
+    }
+  }
+
+  return { type: "text", text: message.text || "[Mensagem]" };
+}
+
+function getInstagramMessagePreview(content: MessageContent): string {
+  switch (content.type) {
+    case "text":
+      return (content.text || "").slice(0, 100);
+    case "image":
+      return content.caption || "[Imagem]";
+    case "video":
+      return content.caption || "[Vídeo]";
+    case "audio":
+      return "[Áudio]";
+    default:
+      return "[Mensagem]";
+  }
+}
+
+async function handleInstagramInboundMessage(
+  supabase: ReturnType<typeof createClient>,
+  channel: {
+    id: string;
+    organization_id: string;
+    business_unit_id: string;
+    external_identifier: string;
+    business_unit?: {
+      id: string;
+      name: string;
+    } | null;
+  },
+  event: InstagramMessagingEvent
+) {
+  const message = event.message!;
+  const senderId = event.sender.id; // IGSID (Instagram Scoped ID)
+  const externalMessageId = message.mid;
+  const content = extractInstagramContent(message);
+  const timestamp = new Date(event.timestamp);
+
+  // Find or create conversation using IGSID as external_contact_id
+  const { data: existingConv, error: convFindErr } = await supabase
+    .from("messaging_conversations")
+    .select("id, contact_id, unread_count, message_count")
+    .eq("channel_id", channel.id)
+    .eq("external_contact_id", senderId)
+    .maybeSingle();
+
+  if (convFindErr) throw convFindErr;
+
+  let conversationId: string;
+  let contactId: string | null = null;
+
+  if (existingConv) {
+    conversationId = existingConv.id;
+    contactId = existingConv.contact_id;
+  } else {
+    // Instagram doesn't expose phone/email — lookup by IGSID in metadata
+    const { data: existingContact } = await supabase
+      .from("contacts")
+      .select("id")
+      .eq("organization_id", channel.organization_id)
+      .contains("metadata", { instagram_id: senderId })
+      .is("deleted_at", null)
+      .maybeSingle();
+
+    if (existingContact) {
+      contactId = existingContact.id;
+    } else {
+      // Auto-create contact with IGSID
+      const contactName = `Instagram ${senderId.slice(-6)}`;
+
+      const { data: newContact, error: contactCreateErr } = await supabase
+        .from("contacts")
+        .insert({
+          organization_id: channel.organization_id,
+          name: contactName,
+          source: "instagram",
+          metadata: {
+            auto_created: true,
+            created_from: "messaging_webhook",
+            instagram_id: senderId,
+            business_unit_id: channel.business_unit_id,
+          },
+        })
+        .select("id")
+        .single();
+
+      if (contactCreateErr) {
+        console.error("[Webhook/IG] Error auto-creating contact:", contactCreateErr);
+      } else {
+        contactId = newContact.id;
+        console.log(`[Webhook/IG] Auto-created contact: ${contactId} for IGSID ${senderId}`);
+      }
+    }
+
+    // Create new conversation
+    const { data: newConv, error: convCreateErr } = await supabase
+      .from("messaging_conversations")
+      .insert({
+        organization_id: channel.organization_id,
+        channel_id: channel.id,
+        business_unit_id: channel.business_unit_id,
+        external_contact_id: senderId,
+        external_contact_name: `Instagram ${senderId.slice(-6)}`,
+        contact_id: contactId,
+        status: "open",
+        priority: "normal",
+        // Instagram has a 24h window but no templates to reopen, so this is informative
+        window_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      })
+      .select("id")
+      .single();
+
+    if (convCreateErr) throw convCreateErr;
+    conversationId = newConv.id;
+
+    // Auto-create deal if lead routing rule exists for this channel
+    if (contactId) {
+      const routingRule = await getLeadRoutingRule(supabase, channel.id);
+      if (routingRule) {
+        await autoCreateDeal(supabase, {
+          organizationId: channel.organization_id,
+          contactId,
+          boardId: routingRule.boardId,
+          stageId: routingRule.stageId,
+          conversationId,
+          contactName: `Instagram ${senderId.slice(-6)}`,
+          businessUnitName: channel.business_unit?.name || "Sem unidade",
+          source: "instagram",
+        });
+      }
+    }
+  }
+
+  // Insert message
+  const { error: msgErr } = await supabase.from("messaging_messages").insert({
+    conversation_id: conversationId,
+    external_id: externalMessageId,
+    direction: "inbound",
+    content_type: content.type,
+    content: content,
+    status: "delivered",
+    delivered_at: timestamp.toISOString(),
+    metadata: {
+      instagram_mid: message.mid,
+      timestamp: event.timestamp,
+    },
+  });
+
+  if (msgErr) {
+    if (!msgErr.message.toLowerCase().includes("duplicate")) {
+      throw msgErr;
+    }
+  }
+
+  // Update conversation
+  await supabase
+    .from("messaging_conversations")
+    .update({
+      last_message_at: timestamp.toISOString(),
+      last_message_preview: getInstagramMessagePreview(content),
+      last_message_direction: "inbound",
+      window_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      status: "open",
+    })
+    .eq("id", conversationId);
+}
+
+async function handleInstagramStatusUpdate(
+  supabase: ReturnType<typeof createClient>,
+  externalMessageId: string,
+  status: "delivered" | "read",
+  timestamp: number
+) {
+  const ts = new Date(timestamp).toISOString();
+
+  const { data: result, error } = await supabase.rpc("update_message_status_if_newer", {
+    p_external_id: externalMessageId,
+    p_new_status: status,
+    p_timestamp: ts,
+    p_error_code: null,
+    p_error_message: null,
+  });
+
+  if (error) {
+    console.error("[Webhook/IG] Status update RPC error:", error);
+    return;
+  }
+
+  if (result?.updated) {
+    console.log(`[Webhook/IG] Status updated: ${externalMessageId} → ${status}`);
   }
 }
 

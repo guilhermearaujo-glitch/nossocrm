@@ -38,18 +38,27 @@ export function useChannelsQuery() {
       }
 
       // Exclude credentials from list query to avoid leaking secrets to React state
+      // Join with business_units to get the unit name
       const { data, error } = await supabase
         .from('messaging_channels')
-        .select('id,organization_id,business_unit_id,channel_type,provider,external_identifier,name,settings,status,status_message,last_connected_at,created_at,updated_at,deleted_at')
+        .select(`
+          id,organization_id,business_unit_id,channel_type,provider,external_identifier,name,settings,status,status_message,last_connected_at,created_at,updated_at,deleted_at,
+          business_unit:business_units!business_unit_id(name)
+        `)
         .eq('organization_id', profile.organization_id)
         .is('deleted_at', null)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
-      return (data as DbMessagingChannel[]).map((row) =>
-        transformChannel({ ...row, credentials: {} } as DbMessagingChannel)
-      );
+      return (data || []).map((row) => {
+        const businessUnit = row.business_unit as { name: string } | null;
+        return transformChannel({
+          ...row,
+          credentials: {},
+          business_unit_name: businessUnit?.name,
+        } as DbMessagingChannel & { business_unit_name?: string });
+      });
     },
     enabled: !!profile?.organization_id,
   });

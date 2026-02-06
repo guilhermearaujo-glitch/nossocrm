@@ -220,7 +220,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ tab: initialTab }) => {
         return <ProductsSettings />;
       case 'business-units':
         return (
-          <div className="pb-10">
+          <div className="pb-10 space-y-8">
             <BusinessUnitsSection />
           </div>
         );

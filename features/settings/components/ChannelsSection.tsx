@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   MessageSquare,
   Plus,
@@ -22,6 +22,12 @@ import {
   Send,
   Copy,
   ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  Zap,
+  ArrowRight,
+  Building2,
 } from 'lucide-react';
 import { SettingsSection } from './SettingsSection';
 import { Modal } from '@/components/ui/Modal';
@@ -42,6 +48,14 @@ import {
   CHANNEL_TYPE_INFO,
 } from '@/lib/messaging/types';
 import { ChannelSetupWizard } from './ChannelSetupWizard';
+import {
+  useLeadRoutingRules,
+  useBoardsWithStages,
+  useCreateLeadRoutingRule,
+  useUpdateLeadRoutingRule,
+  useDeleteLeadRoutingRule,
+} from '@/lib/query/hooks/useLeadRoutingRulesQuery';
+import type { LeadRoutingRuleView } from '@/lib/messaging/types';
 
 // =============================================================================
 // CONSTANTS
@@ -168,18 +182,26 @@ function WebhookInfo({ channelId, verifyToken }: { channelId: string; verifyToke
 
 interface ChannelCardProps {
   channel: MessagingChannel;
+  routingRule?: LeadRoutingRuleView;
+  boards: { id: string; name: string; stages: { id: string; name: string; position: number }[] }[];
   onEdit: () => void;
   onToggle: () => void;
   onDelete: () => void;
+  onRoutingChange: (channelId: string, boardId: string | null, stageId: string | null, enabled: boolean) => void;
   isLoading?: boolean;
+  isRoutingLoading?: boolean;
 }
 
 function ChannelCard({
   channel,
+  routingRule,
+  boards,
   onEdit,
   onToggle,
   onDelete,
+  onRoutingChange,
   isLoading,
+  isRoutingLoading,
 }: ChannelCardProps) {
   const Icon = CHANNEL_ICONS[channel.channelType] || MessageSquare;
   const StatusIcon = STATUS_ICONS[channel.status];
@@ -187,114 +209,314 @@ function ChannelCard({
   const isConnected = channel.status === 'connected';
   const isConnecting = channel.status === 'connecting';
 
+  // Routing state
+  const [isRoutingExpanded, setIsRoutingExpanded] = useState(false);
+  const [createDeal, setCreateDeal] = useState(!!routingRule?.boardId);
+  const [boardId, setBoardId] = useState<string | null>(routingRule?.boardId || null);
+  const [stageId, setStageId] = useState<string | null>(routingRule?.stageId || null);
+
+  // Sync local state with routing rule
+  useEffect(() => {
+    setCreateDeal(!!routingRule?.boardId);
+    setBoardId(routingRule?.boardId || null);
+    setStageId(routingRule?.stageId || null);
+  }, [routingRule]);
+
+  // Get stages for selected board
+  const selectedBoard = boards.find((b) => b.id === boardId);
+  const stages = selectedBoard?.stages || [];
+
+  // Auto-select first stage when board changes
+  useEffect(() => {
+    if (boardId && stages.length > 0 && !stages.find((s) => s.id === stageId)) {
+      const firstStageId = stages[0].id;
+      setStageId(firstStageId);
+      // Save immediately on board change
+      onRoutingChange(channel.id, boardId, firstStageId, true);
+    }
+  }, [boardId, stages]);
+
+  // Handle toggle create deal
+  const handleToggleCreateDeal = () => {
+    const newCreateDeal = !createDeal;
+    setCreateDeal(newCreateDeal);
+    if (!newCreateDeal) {
+      setBoardId(null);
+      setStageId(null);
+      onRoutingChange(channel.id, null, null, routingRule?.enabled ?? true);
+    }
+  };
+
+  // Handle board change
+  const handleBoardChange = (newBoardId: string) => {
+    setBoardId(newBoardId || null);
+    if (!newBoardId) {
+      setStageId(null);
+      onRoutingChange(channel.id, null, null, routingRule?.enabled ?? true);
+    }
+    // Stage will be auto-selected by useEffect
+  };
+
+  // Handle stage change
+  const handleStageChange = (newStageId: string) => {
+    setStageId(newStageId || null);
+    if (boardId && newStageId) {
+      onRoutingChange(channel.id, boardId, newStageId, routingRule?.enabled ?? true);
+    }
+  };
+
+  // Routing status display
+  const hasRouting = routingRule && routingRule.boardId;
+
   return (
-    <div className="p-4 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl">
-      <div className="flex items-start justify-between gap-4">
-        {/* Icon & Info */}
-        <div className="flex items-start gap-3">
+    <div className="bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl overflow-hidden">
+      {/* Main card content */}
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          {/* Icon & Info */}
+          <div className="flex items-start gap-3">
+            <div
+              className={cn(
+                'w-10 h-10 rounded-lg flex items-center justify-center',
+                typeInfo?.color || 'bg-slate-500',
+                'text-white'
+              )}
+            >
+              <Icon className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate">
+                {channel.name}
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {typeInfo?.label} · {channel.provider}
+              </p>
+              <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">
+                {channel.externalIdentifier}
+              </p>
+              {channel.businessUnitName && (
+                <div className="flex items-center gap-1 mt-1">
+                  <Building2 className="w-3 h-3 text-slate-400 dark:text-slate-500" />
+                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                    {channel.businessUnitName}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Status Badge */}
           <div
             className={cn(
-              'w-10 h-10 rounded-lg flex items-center justify-center',
-              typeInfo?.color || 'bg-slate-500',
-              'text-white'
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
+              STATUS_COLORS[channel.status]
             )}
           >
-            <Icon className="w-5 h-5" />
-          </div>
-          <div className="min-w-0">
-            <h4 className="text-sm font-semibold text-slate-900 dark:text-white truncate">
-              {channel.name}
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              {typeInfo?.label} · {channel.provider}
-            </p>
-            <p className="text-xs text-slate-400 dark:text-slate-500 truncate mt-0.5">
-              {channel.externalIdentifier}
-            </p>
+            <StatusIcon
+              className={cn(
+                'w-3.5 h-3.5',
+                isConnecting && 'animate-spin'
+              )}
+            />
+            <span>{CHANNEL_STATUS_LABELS[channel.status]}</span>
           </div>
         </div>
 
-        {/* Status Badge */}
-        <div
-          className={cn(
-            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium',
-            STATUS_COLORS[channel.status]
-          )}
-        >
-          <StatusIcon
-            className={cn(
-              'w-3.5 h-3.5',
-              isConnecting && 'animate-spin'
-            )}
+        {/* Status Message */}
+        {channel.statusMessage && channel.status === 'error' && (
+          <div className="mt-3 p-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
+            <p className="text-xs text-red-700 dark:text-red-300">
+              {channel.statusMessage}
+            </p>
+          </div>
+        )}
+
+        {/* Webhook URL for Meta Cloud */}
+        {channel.provider === 'meta-cloud' && channel.status === 'pending' && (
+          <WebhookInfo
+            channelId={channel.id}
+            verifyToken={(channel.settings?.verifyToken || channel.credentials?.verifyToken) as string | undefined}
           />
-          <span>{CHANNEL_STATUS_LABELS[channel.status]}</span>
+        )}
+
+        {/* Actions */}
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onEdit}
+              disabled={isLoading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10
+                hover:bg-slate-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
+            >
+              <Settings2 className="w-3.5 h-3.5" />
+              Configurar
+            </button>
+            <button
+              onClick={onToggle}
+              disabled={isLoading || isConnecting}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50',
+                isConnected
+                  ? 'bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10'
+                  : 'bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-500/20'
+              )}
+            >
+              {isConnected ? (
+                <>
+                  <WifiOff className="w-3.5 h-3.5" />
+                  Desconectar
+                </>
+              ) : (
+                <>
+                  <Wifi className="w-3.5 h-3.5" />
+                  Conectar
+                </>
+              )}
+            </button>
+          </div>
+
+          <button
+            onClick={onDelete}
+            disabled={isLoading}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+              bg-white dark:bg-white/5 border border-red-200 dark:border-red-500/20
+              text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10
+              transition-colors disabled:opacity-50"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* Status Message */}
-      {channel.statusMessage && channel.status === 'error' && (
-        <div className="mt-3 p-2 rounded-lg bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20">
-          <p className="text-xs text-red-700 dark:text-red-300">
-            {channel.statusMessage}
-          </p>
-        </div>
-      )}
-
-      {/* Webhook URL for Meta Cloud */}
-      {channel.provider === 'meta-cloud' && channel.status === 'pending' && (
-        <WebhookInfo
-          channelId={channel.id}
-          verifyToken={channel.credentials?.verifyToken as string | undefined}
-        />
-      )}
-
-      {/* Actions */}
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onEdit}
-            disabled={isLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-              bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10
-              hover:bg-slate-100 dark:hover:bg-white/10 transition-colors disabled:opacity-50"
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            Configurar
-          </button>
-          <button
-            onClick={onToggle}
-            disabled={isLoading || isConnecting}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors disabled:opacity-50',
-              isConnected
-                ? 'bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 hover:bg-slate-100 dark:hover:bg-white/10'
-                : 'bg-green-50 dark:bg-green-500/10 border border-green-200 dark:border-green-500/20 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-500/20'
-            )}
-          >
-            {isConnected ? (
-              <>
-                <WifiOff className="w-3.5 h-3.5" />
-                Desconectar
-              </>
-            ) : (
-              <>
-                <Wifi className="w-3.5 h-3.5" />
-                Conectar
-              </>
-            )}
-          </button>
-        </div>
-
+      {/* Routing Section - Collapsible */}
+      <div className="border-t border-slate-100 dark:border-white/5">
         <button
-          onClick={onDelete}
-          disabled={isLoading}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-            bg-white dark:bg-white/5 border border-red-200 dark:border-red-500/20
-            text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10
-            transition-colors disabled:opacity-50"
+          type="button"
+          onClick={() => setIsRoutingExpanded(!isRoutingExpanded)}
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-white/5 transition-colors"
         >
-          <Trash2 className="w-3.5 h-3.5" />
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500" />
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
+              Entrada de Leads
+            </span>
+            {hasRouting ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-300">
+                <LayoutGrid className="w-3 h-3" />
+                {routingRule.boardName}
+              </span>
+            ) : (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400">
+                Desativado
+              </span>
+            )}
+          </div>
+          {isRoutingExpanded ? (
+            <ChevronUp className="w-4 h-4 text-slate-400" />
+          ) : (
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          )}
         </button>
+
+        {/* Expanded routing config */}
+        {isRoutingExpanded && (
+          <div className="px-4 pb-4 space-y-4">
+            {/* Toggle create deal */}
+            <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-black/20 rounded-xl">
+              <button
+                type="button"
+                onClick={handleToggleCreateDeal}
+                disabled={isRoutingLoading}
+                className={cn(
+                  'relative w-10 h-6 rounded-full transition-colors flex-shrink-0 disabled:opacity-50',
+                  createDeal
+                    ? 'bg-primary-600'
+                    : 'bg-slate-200 dark:bg-white/10'
+                )}
+              >
+                <span
+                  className={cn(
+                    'absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform',
+                    createDeal ? 'left-5' : 'left-1'
+                  )}
+                />
+              </button>
+              <div>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Criar deal automaticamente
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Quando uma nova conversa iniciar neste canal
+                </p>
+              </div>
+            </div>
+
+            {/* Board + Stage selectors */}
+            {createDeal && (
+              <div className="space-y-3 p-3 border border-dashed border-slate-200 dark:border-white/10 rounded-xl">
+                <div className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-400">
+                  <ArrowRight className="w-3.5 h-3.5" />
+                  Destino do deal
+                </div>
+
+                {/* Board selector */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Funil
+                  </label>
+                  {boards.length === 0 ? (
+                    <div className="p-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg">
+                      <p className="text-xs text-amber-700 dark:text-amber-300">
+                        Nenhum funil encontrado. Crie um funil primeiro.
+                      </p>
+                    </div>
+                  ) : (
+                    <select
+                      value={boardId || ''}
+                      onChange={(e) => handleBoardChange(e.target.value)}
+                      disabled={isRoutingLoading}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-lg
+                        focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm text-slate-900 dark:text-white disabled:opacity-50"
+                    >
+                      <option value="">Selecione um funil</option>
+                      {boards.map((board) => (
+                        <option key={board.id} value={board.id}>
+                          {board.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+
+                {/* Stage selector */}
+                {boardId && stages.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                      Estágio inicial
+                    </label>
+                    <select
+                      value={stageId || ''}
+                      onChange={(e) => handleStageChange(e.target.value)}
+                      disabled={isRoutingLoading}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-white/10 rounded-lg
+                        focus:outline-none focus:ring-2 focus:ring-primary-500 text-sm text-slate-900 dark:text-white disabled:opacity-50"
+                    >
+                      {stages.map((stage) => (
+                        <option key={stage.id} value={stage.id}>
+                          {stage.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[10px] text-slate-400 dark:text-slate-500">
+                      O deal será criado neste estágio quando a conversa iniciar.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -340,10 +562,15 @@ export function ChannelsSection() {
 
   // Queries
   const { data: channels = [], isLoading } = useChannelsQuery();
+  const { data: routingRules = [], isLoading: routingLoading } = useLeadRoutingRules();
+  const { data: boards = [], isLoading: boardsLoading } = useBoardsWithStages();
 
   // Mutations
   const deleteMutation = useDeleteChannelMutation();
   const toggleMutation = useToggleChannelStatusMutation();
+  const createRoutingMutation = useCreateLeadRoutingRule();
+  const updateRoutingMutation = useUpdateLeadRoutingRule();
+  const deleteRoutingMutation = useDeleteLeadRoutingRule();
 
   // Local state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -351,6 +578,47 @@ export function ChannelsSection() {
   const [channelToEdit, setChannelToEdit] = useState<MessagingChannel | null>(null);
 
   const canUse = profile?.role === 'admin';
+
+  // Helper to get routing rule for a channel
+  const getRoutingRuleForChannel = (channelId: string) => {
+    return routingRules.find((r) => r.channelId === channelId);
+  };
+
+  // Handle routing changes
+  const handleRoutingChange = async (
+    channelId: string,
+    boardId: string | null,
+    stageId: string | null,
+    enabled: boolean
+  ) => {
+    const existingRule = getRoutingRuleForChannel(channelId);
+
+    try {
+      if (existingRule) {
+        // Update existing rule
+        await updateRoutingMutation.mutateAsync({
+          ruleId: existingRule.id,
+          input: { boardId, stageId, enabled },
+        });
+      } else if (boardId && stageId) {
+        // Create new rule
+        await createRoutingMutation.mutateAsync({
+          channelId,
+          boardId,
+          stageId,
+          enabled: true,
+        });
+      }
+      // No toast for inline changes - feels smoother
+    } catch {
+      addToast('Erro ao salvar configuração de entrada de leads', 'error');
+    }
+  };
+
+  const isRoutingMutating =
+    createRoutingMutation.isPending ||
+    updateRoutingMutation.isPending ||
+    deleteRoutingMutation.isPending;
 
   // Handlers
   const handleToggleChannel = async (channel: MessagingChannel) => {
@@ -427,12 +695,14 @@ export function ChannelsSection() {
             <ChannelCard
               key={channel.id}
               channel={channel}
+              routingRule={getRoutingRuleForChannel(channel.id)}
+              boards={boards}
               onEdit={() => setChannelToEdit(channel)}
               onToggle={() => handleToggleChannel(channel)}
               onDelete={() => setChannelToDelete(channel)}
-              isLoading={
-                toggleMutation.isPending || deleteMutation.isPending
-              }
+              onRoutingChange={handleRoutingChange}
+              isLoading={toggleMutation.isPending || deleteMutation.isPending}
+              isRoutingLoading={isRoutingMutating || routingLoading || boardsLoading}
             />
           ))}
         </div>
@@ -493,6 +763,13 @@ export function ChannelsSection() {
                   <dt className="text-slate-500 dark:text-slate-400">Identificador:</dt>
                   <dd className="text-slate-900 dark:text-white font-medium">
                     {channelToEdit.externalIdentifier}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-slate-500 dark:text-slate-400">Unidade:</dt>
+                  <dd className="text-slate-900 dark:text-white font-medium flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                    {channelToEdit.businessUnitName || 'Não definida'}
                   </dd>
                 </div>
                 <div className="flex justify-between">

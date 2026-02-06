@@ -240,7 +240,7 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, serviceKey);
 
-  // Fetch channel with business unit info for auto-create features
+  // Fetch channel with business unit info
   const { data: channel, error: channelErr } = await supabase
     .from("messaging_channels")
     .select(`
@@ -252,9 +252,7 @@ Deno.serve(async (req) => {
       status,
       business_unit:business_units(
         id,
-        name,
-        auto_create_deal,
-        default_board_id
+        name
       )
     `)
     .eq("id", channelId)
@@ -388,6 +386,38 @@ function determineEventType(payload: ZApiWebhookPayload): string {
   return "unknown";
 }
 
+/**
+ * Fetch lead routing rule for a channel.
+ * Returns null if no rule exists or rule is disabled.
+ */
+async function getLeadRoutingRule(
+  supabase: ReturnType<typeof createClient>,
+  channelId: string
+): Promise<{
+  boardId: string;
+  stageId: string | null;
+} | null> {
+  const { data, error } = await supabase
+    .from("lead_routing_rules")
+    .select("board_id, stage_id, enabled")
+    .eq("channel_id", channelId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("[Webhook] Error fetching lead routing rule:", error);
+    return null;
+  }
+
+  if (!data || !data.enabled || !data.board_id) {
+    return null;
+  }
+
+  return {
+    boardId: data.board_id,
+    stageId: data.stage_id,
+  };
+}
+
 async function handleInboundMessage(
   supabase: ReturnType<typeof createClient>,
   channel: {
@@ -398,8 +428,6 @@ async function handleInboundMessage(
     business_unit?: {
       id: string;
       name: string;
-      auto_create_deal: boolean;
-      default_board_id: string | null;
     } | null;
   },
   payload: ZApiWebhookPayload
@@ -498,17 +526,20 @@ async function handleInboundMessage(
     if (convCreateErr) throw convCreateErr;
     conversationId = newConv.id;
 
-    // AUTO-CREATE DEAL if enabled on Business Unit
-    const bu = channel.business_unit;
-    if (bu?.auto_create_deal && bu.default_board_id && contactId) {
-      await autoCreateDeal(supabase, {
-        organizationId: channel.organization_id,
-        contactId,
-        boardId: bu.default_board_id,
-        conversationId,
-        contactName: payload.senderName || phone,
-        businessUnitName: bu.name,
-      });
+    // AUTO-CREATE DEAL if lead routing rule exists for this channel
+    if (contactId) {
+      const routingRule = await getLeadRoutingRule(supabase, channel.id);
+      if (routingRule) {
+        await autoCreateDeal(supabase, {
+          organizationId: channel.organization_id,
+          contactId,
+          boardId: routingRule.boardId,
+          stageId: routingRule.stageId,
+          conversationId,
+          contactName: payload.senderName || phone,
+          businessUnitName: channel.business_unit?.name || "Sem unidade",
+        });
+      }
     }
   }
 
@@ -552,8 +583,8 @@ async function handleInboundMessage(
 }
 
 /**
- * Auto-create a deal in the default board when a new conversation starts.
- * Only called if business_unit.auto_create_deal is true.
+ * Auto-create a deal when a new conversation starts.
+ * Uses stageId from lead_routing_rules, or falls back to first stage of board.
  */
 async function autoCreateDeal(
   supabase: ReturnType<typeof createClient>,
@@ -561,24 +592,30 @@ async function autoCreateDeal(
     organizationId: string;
     contactId: string;
     boardId: string;
+    stageId?: string | null;
     conversationId: string;
     contactName: string;
     businessUnitName: string;
   }
 ) {
   try {
-    // Get the first stage of the board (entry point)
-    const { data: firstStage, error: stageErr } = await supabase
-      .from("stages")
-      .select("id")
-      .eq("board_id", params.boardId)
-      .order("position", { ascending: true })
-      .limit(1)
-      .single();
+    let stageId = params.stageId;
 
-    if (stageErr || !firstStage) {
-      console.error("[Webhook] Could not find first stage for auto-create deal:", stageErr);
-      return;
+    // If no stageId provided, get the first stage of the board
+    if (!stageId) {
+      const { data: firstStage, error: stageErr } = await supabase
+        .from("board_stages")
+        .select("id")
+        .eq("board_id", params.boardId)
+        .order("order", { ascending: true })
+        .limit(1)
+        .single();
+
+      if (stageErr || !firstStage) {
+        console.error("[Webhook] Could not find first stage for auto-create deal:", stageErr);
+        return;
+      }
+      stageId = firstStage.id;
     }
 
     // Create the deal
@@ -589,7 +626,7 @@ async function autoCreateDeal(
       .insert({
         organization_id: params.organizationId,
         board_id: params.boardId,
-        stage_id: firstStage.id,
+        stage_id: stageId,
         contact_id: params.contactId,
         title: dealTitle,
         value: 0,

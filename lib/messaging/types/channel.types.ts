@@ -125,6 +125,7 @@ export interface MessagingChannel {
   id: string;
   organizationId: string;
   businessUnitId: string;
+  businessUnitName?: string;
   channelType: ChannelType;
   provider: string;
   externalIdentifier: string;
@@ -187,6 +188,16 @@ export interface MetaCloudCredentials {
 }
 
 /**
+ * Meta Instagram credentials for Instagram DMs.
+ */
+export interface MetaInstagramCredentials {
+  accessToken: string;
+  pageId: string;
+  instagramAccountId: string;
+  appSecret?: string;
+}
+
+/**
  * SMTP credentials for Email.
  */
 export interface SmtpCredentials {
@@ -243,11 +254,14 @@ export interface UpdateChannelInput {
 /**
  * Transform database channel to app channel.
  */
-export function transformChannel(db: DbMessagingChannel): MessagingChannel {
+export function transformChannel(
+  db: DbMessagingChannel & { business_unit_name?: string }
+): MessagingChannel {
   return {
     id: db.id,
     organizationId: db.organization_id,
     businessUnitId: db.business_unit_id,
+    businessUnitName: db.business_unit_name,
     channelType: db.channel_type,
     provider: db.provider,
     externalIdentifier: db.external_identifier,

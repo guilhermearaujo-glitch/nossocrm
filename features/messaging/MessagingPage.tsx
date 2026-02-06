@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { MessageSquare, User, CheckCircle, MoreVertical, LinkIcon } from 'lucide-react';
+import { MessageSquare, User, CheckCircle, MoreVertical, LinkIcon, Trash2, RotateCcw } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { sanitizeUrl } from '@/lib/utils/sanitize';
@@ -19,7 +19,17 @@ import {
   useConversation,
   useMarkConversationRead,
   useResolveConversation,
+  useReopenConversation,
+  useDeleteConversation,
 } from '@/lib/query/hooks/useConversationsQuery';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Modal } from '@/components/ui/Modal';
 import { useRealtimeSyncMessaging } from '@/lib/realtime/useRealtimeSync';
 import { queryKeys } from '@/lib/query';
 import type { ConversationView } from '@/lib/messaging/types';
@@ -39,6 +49,7 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
     initialConversationId || conversationIdParam || undefined
   );
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Subscribe to realtime updates
   useRealtimeSyncMessaging();
@@ -49,6 +60,21 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
   // Mutations
   const { mutate: markAsRead } = useMarkConversationRead();
   const { mutate: resolveConversation } = useResolveConversation();
+  const { mutate: reopenConversation } = useReopenConversation();
+  const { mutate: deleteConversation, isPending: isDeleting } = useDeleteConversation();
+
+  // Handle delete conversation
+  const handleDeleteConversation = useCallback(() => {
+    if (!selectedConversationId) return;
+
+    deleteConversation(selectedConversationId, {
+      onSuccess: () => {
+        setSelectedConversationId(undefined);
+        setShowDeleteConfirm(false);
+        router.push('/messaging', { scroll: false });
+      },
+    });
+  }, [selectedConversationId, deleteConversation, router]);
 
   // Mark as read when opening a conversation
   useEffect(() => {
@@ -175,12 +201,35 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
                     <LinkIcon className="w-5 h-5" />
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors"
-                >
-                  <MoreVertical className="w-5 h-5" />
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/5 rounded-lg transition-colors"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {selectedConversation.status === 'resolved' && (
+                      <DropdownMenuItem
+                        onClick={() => reopenConversation(selectedConversation.id)}
+                        className="gap-2"
+                      >
+                        <RotateCcw className="w-4 h-4" />
+                        Reabrir conversa
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="gap-2 text-red-600 focus:text-red-600 focus:bg-red-50 dark:focus:bg-red-500/10"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                      Excluir conversa
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
 
@@ -220,6 +269,38 @@ export function MessagingPage({ initialConversationId }: MessagingPageProps = {}
         suggestedPhone={selectedConversation?.contactPhone || undefined}
         suggestedName={selectedConversation?.externalContactName || undefined}
       />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        title="Excluir conversa"
+        size="sm"
+      >
+        <div className="space-y-4">
+          <p className="text-slate-600 dark:text-slate-300">
+            Tem certeza que deseja excluir esta conversa? Todas as mensagens serão perdidas permanentemente.
+          </p>
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={() => setShowDeleteConfirm(false)}
+              className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              disabled={isDeleting}
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteConversation}
+              disabled={isDeleting}
+              className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50"
+            >
+              {isDeleting ? 'Excluindo...' : 'Excluir'}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

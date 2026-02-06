@@ -570,14 +570,13 @@ function CredentialsStep({
           className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold
             bg-primary-600 text-white hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          Testar conexão
+          Continuar
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>
     </div>
   );
 }
-
 // =============================================================================
 // STEP: TEST CONNECTION
 // =============================================================================
@@ -895,16 +894,21 @@ export function ChannelSetupWizard({
         identifier = credentials.phoneNumberId || 'pending';
       }
 
+      // Move verifyToken from credentials to settings (it's not a secret)
+      const { verifyToken, ...secretCredentials } = credentials;
+
       const input: CreateChannelInput = {
         businessUnitId: selectedBusinessUnitId,
         channelType,
         provider,
         externalIdentifier: identifier,
         name: channelName.trim(),
-        credentials,
+        credentials: secretCredentials,
+        settings: verifyToken ? { verifyToken } : undefined,
       };
 
       await createMutation.mutateAsync(input);
+
       setStep('complete');
       addToast('Canal criado com sucesso!', 'success');
     } catch (error) {

@@ -109,6 +109,20 @@ export const queryKeys = {
         /** Approved templates only */
         approved: (channelId: string) => [...base.all, 'approved', channelId] as const,
     })),
+
+    /**
+     * Lead routing rules query keys.
+     * Rules for automatic deal creation from messaging channels.
+     */
+    leadRoutingRules: createExtendedQueryKeys('leadRoutingRules', base => ({
+        /** Channels without routing rules (for adding new rules) */
+        channelsWithoutRules: () => [...base.all, 'channelsWithoutRules'] as const,
+    })),
+
+    /**
+     * Boards with stages for destination selector.
+     */
+    boardsWithStages: createQueryKeys('boardsWithStages'),
 };
 
 /**
