@@ -79,5 +79,10 @@ import './providers';
 export { BaseChannelProvider } from './providers/base.provider';
 
 // Export WhatsApp providers
-export { ZApiWhatsAppProvider } from './providers/whatsapp';
-export type { ZApiCredentials, ZApiWebhookPayload } from './providers/whatsapp';
+export { ZApiWhatsAppProvider, MetaCloudWhatsAppProvider } from './providers/whatsapp';
+export type {
+  ZApiCredentials,
+  ZApiWebhookPayload,
+  MetaCloudCredentials,
+  MetaCloudWebhookPayload,
+} from './providers/whatsapp';

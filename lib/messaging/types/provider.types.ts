@@ -82,8 +82,9 @@ export interface IChannelProvider {
   /**
    * Upload media for sending.
    * Returns a media ID or URL for use in messages.
+   * Note: Uses File | Blob for browser/edge compatibility.
    */
-  uploadMedia?(file: File | Buffer, mimeType: string): Promise<MediaUploadResult>;
+  uploadMedia?(file: File | Blob, mimeType: string): Promise<MediaUploadResult>;
 
   /**
    * Download media from a received message.
@@ -300,8 +301,8 @@ export interface MediaUploadResult {
  */
 export interface MediaDownloadResult {
   success: boolean;
-  /** Raw file data */
-  data?: Buffer;
+  /** Raw file data (ArrayBuffer for browser/edge compatibility) */
+  data?: ArrayBuffer;
   /** MIME type */
   mimeType?: string;
   /** File name if available */

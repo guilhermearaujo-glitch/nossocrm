@@ -263,13 +263,13 @@ export class ChannelRouterService {
    * Upload media for a channel.
    *
    * @param channelId - The channel ID
-   * @param file - File data
+   * @param file - File data (File or Blob for browser/edge compatibility)
    * @param mimeType - MIME type
    * @returns Upload result
    */
   async uploadMedia(
     channelId: string,
-    file: File | Buffer,
+    file: File | Blob,
     mimeType: string
   ): Promise<MediaUploadResult> {
     try {

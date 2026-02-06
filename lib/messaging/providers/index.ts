@@ -10,15 +10,20 @@
 export { BaseChannelProvider } from './base.provider';
 
 // WhatsApp providers
-export { ZApiWhatsAppProvider } from './whatsapp';
-export type { ZApiCredentials, ZApiWebhookPayload } from './whatsapp';
+export { ZApiWhatsAppProvider, MetaCloudWhatsAppProvider } from './whatsapp';
+export type {
+  ZApiCredentials,
+  ZApiWebhookPayload,
+  MetaCloudCredentials,
+  MetaCloudWebhookPayload,
+} from './whatsapp';
 
 // =============================================================================
 // FACTORY REGISTRATION
 // =============================================================================
 
 import { registerProvider } from '../channel-factory';
-import { ZApiWhatsAppProvider } from './whatsapp';
+import { ZApiWhatsAppProvider, MetaCloudWhatsAppProvider } from './whatsapp';
 
 // Register Z-API provider
 registerProvider({
@@ -53,10 +58,54 @@ registerProvider({
   features: ['media', 'read_receipts', 'qr_code'],
 });
 
-// Future: Register Meta Cloud API provider
-// registerProvider({
-//   channelType: 'whatsapp',
-//   providerName: 'meta-cloud',
-//   constructor: MetaCloudWhatsAppProvider,
-//   ...
-// });
+// Register Meta Cloud API provider
+registerProvider({
+  channelType: 'whatsapp',
+  providerName: 'meta-cloud',
+  constructor: MetaCloudWhatsAppProvider,
+  displayName: 'Meta Cloud API',
+  description: 'WhatsApp oficial via Meta Business API (requer verificação)',
+  configFields: [
+    {
+      key: 'phoneNumberId',
+      label: 'Phone Number ID',
+      type: 'text',
+      required: true,
+      placeholder: 'ID do número no Meta Business',
+      helpText: 'Encontre no Meta Business Suite > WhatsApp > API Setup',
+    },
+    {
+      key: 'accessToken',
+      label: 'Access Token',
+      type: 'password',
+      required: true,
+      placeholder: 'Token de acesso permanente',
+      helpText: 'Gere um token permanente no Meta Business Suite',
+    },
+    {
+      key: 'wabaId',
+      label: 'WABA ID (opcional)',
+      type: 'text',
+      required: false,
+      placeholder: 'ID da conta WhatsApp Business',
+      helpText: 'Necessário para sincronizar templates',
+    },
+    {
+      key: 'appSecret',
+      label: 'App Secret (opcional)',
+      type: 'password',
+      required: false,
+      placeholder: 'Segredo do app Meta',
+      helpText: 'Para verificação de assinatura de webhooks',
+    },
+    {
+      key: 'verifyToken',
+      label: 'Verify Token (opcional)',
+      type: 'text',
+      required: false,
+      placeholder: 'Token de verificação de webhook',
+      helpText: 'Token customizado para validar configuração de webhook',
+    },
+  ],
+  features: ['media', 'read_receipts', 'templates'],
+});
