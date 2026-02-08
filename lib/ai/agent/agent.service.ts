@@ -15,6 +15,12 @@ import { buildLeadContext, formatContextForPrompt } from './context-builder';
 import { getChannelRouter } from '@/lib/messaging/channel-router.service';
 import { evaluateStageAdvancement } from './stage-evaluator';
 import { extractAndUpdateBANT } from '../extraction/extraction.service';
+import {
+  buildConversationalPromptFromPatterns,
+  getDefaultLearnedPatterns,
+  type DynamicEvaluationResult,
+} from './generative-schema';
+import type { LearnedPattern } from './few-shot-learner';
 import type {
   StageAIConfig,
   LeadContext,
@@ -26,12 +32,17 @@ import type {
 // Organization AI Config
 // =============================================================================
 
+export type AIConfigMode = 'zero_config' | 'template' | 'auto_learn' | 'advanced';
+
 export interface OrgAIConfig {
   enabled: boolean;
   provider: AIProvider;
   model: string;
   apiKey: string;
   hitlThreshold: number;
+  configMode: AIConfigMode;
+  learnedPatterns: LearnedPattern | null;
+  templateId: string | null;
 }
 
 /**
@@ -43,7 +54,9 @@ export async function getOrgAIConfig(
 ): Promise<OrgAIConfig | null> {
   const { data: orgSettings, error } = await supabase
     .from('organization_settings')
-    .select('ai_enabled, ai_provider, ai_model, ai_google_key, ai_openai_key, ai_anthropic_key, ai_hitl_threshold')
+    .select(
+      'ai_enabled, ai_provider, ai_model, ai_google_key, ai_openai_key, ai_anthropic_key, ai_hitl_threshold, ai_config_mode, ai_learned_patterns, ai_template_id'
+    )
     .eq('organization_id', organizationId)
     .maybeSingle();
 
@@ -62,10 +75,14 @@ export async function getOrgAIConfig(
   // Selecionar a chave correta baseado no provider
   const getApiKey = () => {
     switch (provider) {
-      case 'google': return orgSettings.ai_google_key || '';
-      case 'openai': return orgSettings.ai_openai_key || '';
-      case 'anthropic': return orgSettings.ai_anthropic_key || '';
-      default: return '';
+      case 'google':
+        return orgSettings.ai_google_key || '';
+      case 'openai':
+        return orgSettings.ai_openai_key || '';
+      case 'anthropic':
+        return orgSettings.ai_anthropic_key || '';
+      default:
+        return '';
     }
   };
 
@@ -76,12 +93,26 @@ export async function getOrgAIConfig(
     return null;
   }
 
+  // Parse learned patterns - pode ser {} vazio, null, ou objeto válido
+  let learnedPatterns: LearnedPattern | null = null;
+  if (
+    orgSettings.ai_learned_patterns &&
+    typeof orgSettings.ai_learned_patterns === 'object' &&
+    Object.keys(orgSettings.ai_learned_patterns as object).length > 0 &&
+    'learnedCriteria' in (orgSettings.ai_learned_patterns as object)
+  ) {
+    learnedPatterns = orgSettings.ai_learned_patterns as LearnedPattern;
+  }
+
   return {
     enabled: orgSettings.ai_enabled !== false, // default true
     provider,
     model: orgSettings.ai_model || AI_DEFAULT_MODELS[provider],
     apiKey,
     hitlThreshold: orgSettings.ai_hitl_threshold ?? 0.85, // default 0.85
+    configMode: (orgSettings.ai_config_mode as AIConfigMode) || 'zero_config',
+    learnedPatterns,
+    templateId: orgSettings.ai_template_id || null,
   };
 }
 
@@ -372,7 +403,12 @@ interface GenerateResponseParams {
 async function generateResponse(params: GenerateResponseParams): Promise<AgentDecision> {
   const { context, stageConfig, incomingMessage, aiConfig } = params;
 
-  const systemPrompt = buildSystemPrompt(context, stageConfig);
+  const systemPrompt = buildSystemPrompt(
+    context,
+    stageConfig,
+    aiConfig.learnedPatterns,
+    aiConfig.configMode
+  );
   const contextText = formatContextForPrompt(context);
 
   const userPrompt = `
@@ -419,7 +455,41 @@ Responda de forma natural, seguindo as instruções do sistema.
   }
 }
 
-function buildSystemPrompt(context: LeadContext, config: StageAIConfig): string {
+function buildSystemPrompt(
+  context: LeadContext,
+  config: StageAIConfig,
+  learnedPatterns: LearnedPattern | null,
+  configMode: AIConfigMode
+): string {
+  // Se modo Auto-Learn e tem padrões aprendidos, usar sistema de padrões
+  if (configMode === 'auto_learn' && learnedPatterns) {
+    console.log('[AIAgent] Using learned patterns for response generation');
+
+    // Construir prompt CONVERSACIONAL baseado nos padrões aprendidos
+    const learnedPrompt = buildConversationalPromptFromPatterns(learnedPatterns);
+
+    // Adicionar contexto da organização e estágio
+    return `${learnedPrompt}
+
+## Contexto da Organização
+Você está representando: ${context.organization.name}
+
+${config.stage_goal ? `
+## Objetivo deste Estágio
+${config.stage_goal}
+` : ''}
+
+${config.advancement_criteria.length > 0 ? `
+## Para Avançar o Lead
+${config.advancement_criteria.map((c) => `- ${c}`).join('\n')}
+` : ''}
+
+## Instruções Adicionais
+${config.system_prompt}
+`;
+  }
+
+  // Modo padrão (zero_config, template, advanced)
   const basePrompt = `
 Você é um assistente de vendas da ${context.organization.name}.
 Seu objetivo é ajudar leads a avançar no funil de vendas de forma natural e consultiva.

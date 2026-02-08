@@ -22,7 +22,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useUpdateAIConfigMutation } from '@/lib/query/hooks/useAIConfigQuery';
+import {
+  useUpdateAIConfigMutation,
+  useProvisionStagesMutation,
+} from '@/lib/query/hooks/useAIConfigQuery';
 import type { AIConfigMode } from './AIConfigModeSelector';
 
 // =============================================================================
@@ -107,6 +110,7 @@ const MODE_OPTIONS: ModeOption[] = [
 export function AIOnboarding({ onComplete }: AIOnboardingProps) {
   const [selectedMode, setSelectedMode] = useState<AIConfigMode | null>(null);
   const updateConfig = useUpdateAIConfigMutation();
+  const provisionStages = useProvisionStagesMutation();
 
   const handleContinue = async () => {
     if (!selectedMode) return;
@@ -115,11 +119,20 @@ export function AIOnboarding({ onComplete }: AIOnboardingProps) {
       await updateConfig.mutateAsync({
         ai_config_mode: selectedMode,
       });
+
+      // If selecting zero_config, provision stage configs automatically
+      if (selectedMode === 'zero_config') {
+        console.log('[AIOnboarding] Provisioning stage configs...');
+        await provisionStages.mutateAsync();
+      }
+
       onComplete(selectedMode);
     } catch (error) {
       console.error('[AIOnboarding] Failed to save mode:', error);
     }
   };
+
+  const isPending = updateConfig.isPending || provisionStages.isPending;
 
   return (
     <div className="space-y-8">
@@ -154,11 +167,11 @@ export function AIOnboarding({ onComplete }: AIOnboardingProps) {
         <Button
           size="lg"
           onClick={handleContinue}
-          disabled={!selectedMode || updateConfig.isPending}
+          disabled={!selectedMode || isPending}
           className="min-w-[200px]"
         >
-          {updateConfig.isPending ? (
-            'Salvando...'
+          {isPending ? (
+            'Configurando...'
           ) : (
             <>
               Continuar

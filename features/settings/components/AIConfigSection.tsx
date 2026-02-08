@@ -347,6 +347,7 @@ export const AIConfigSection: React.FC = () => {
                 const recommended = providerData.models.find(m => m.description.includes('Recomendado')) || providerData.models[0];
                 await setAiModel(recommended.id);
             }
+            showToast('Provedor atualizado!', 'success');
         } catch (err) {
             showToast(err instanceof Error ? err.message : 'Falha ao atualizar provedor de IA', 'error');
         }
@@ -434,6 +435,7 @@ export const AIConfigSection: React.FC = () => {
                                         await setAiModel(next);
                                         setCustomModelDraft('');
                                         setCustomModelDirty(false);
+                                        showToast('Modelo salvo!', 'success');
                                     } catch (err) {
                                         showToast(err instanceof Error ? err.message : 'Falha ao atualizar modelo', 'error');
                                     }

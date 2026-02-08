@@ -156,6 +156,41 @@ export function useAITemplatesQuery() {
 }
 
 // =============================================================================
+// Mutation: Provision Stage Configs (Zero Config Mode)
+// =============================================================================
+
+interface ProvisionResult {
+  success: boolean;
+  message: string;
+  created: number;
+  updated: number;
+  errors?: string[];
+}
+
+export function useProvisionStagesMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (): Promise<ProvisionResult> => {
+      const response = await fetch('/api/ai/provision-stages', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to provision stages');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      // Invalidate stage AI config queries
+      queryClient.invalidateQueries({ queryKey: ['stage-ai-config'] });
+    },
+  });
+}
+
+// =============================================================================
 // Query: Single AI Template
 // =============================================================================
 

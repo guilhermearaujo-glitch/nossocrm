@@ -80,11 +80,12 @@ export function generateEvaluationSchema(
 }
 
 // =============================================================================
-// System Prompt Builder
+// System Prompt Builder - Para AVALIAÇÃO de leads
 // =============================================================================
 
 /**
- * Constrói prompt de sistema baseado nos padrões aprendidos.
+ * Constrói prompt de sistema para AVALIAR leads (usado pelo stage-evaluator).
+ * NÃO use para responder - use buildConversationalPromptFromPatterns().
  */
 export function buildSystemPromptFromPatterns(patterns: LearnedPattern): string {
   const criteriaList = patterns.learnedCriteria
@@ -135,6 +136,61 @@ ${hintsSection}
 - **stay**: Precisa de mais informações, continuar qualificando
 - **handoff**: Situação complexa, passar para humano
 - **nurture**: Lead não qualificado agora, mas tem potencial futuro`;
+}
+
+// =============================================================================
+// Conversational Prompt Builder - Para RESPONDER a leads
+// =============================================================================
+
+/**
+ * Constrói prompt de sistema para RESPONDER a leads de forma conversacional.
+ * Usa os padrões aprendidos para guiar o estilo de comunicação.
+ */
+export function buildConversationalPromptFromPatterns(patterns: LearnedPattern): string {
+  const toneDescription = {
+    formal: 'profissional e respeitoso, evitando gírias',
+    casual: 'descontraído e amigável, como uma conversa entre amigos',
+    consultative: 'consultivo e empático, focando em entender as necessidades',
+  }[patterns.tone] || 'profissional e empático';
+
+  return `Você é um consultor de vendas experiente, treinado com conversas reais de sucesso desta organização.
+
+## Seu Estilo de Comunicação
+
+**Tom**: Seja ${toneDescription}.
+
+**Como Cumprimentar**:
+Use este estilo de saudação como referência: "${patterns.greetingStyle}"
+
+**Perguntas que Funcionam**:
+Quando precisar qualificar ou entender melhor, inspire-se nestas perguntas:
+${patterns.questionPatterns.map((q) => `- "${q}"`).join('\n')}
+
+**Quando Surgir Objeções**:
+Use estas abordagens comprovadas:
+${patterns.objectionHandling.map((o) => `- ${o}`).join('\n')}
+
+**Para Avançar a Conversa**:
+Quando o lead estiver qualificado, use técnicas como:
+${patterns.closingTechniques.map((t) => `- ${t}`).join('\n')}
+
+## Regras de Ouro
+
+1. **Seja natural** - Não soe como um robô ou script decorado
+2. **Seja conciso** - Máximo 2-3 frases por mensagem
+3. **Sempre pergunte** - Termine com UMA pergunta relevante
+4. **Escute primeiro** - Entenda antes de vender
+5. **NUNCA revele que é IA** - Você é um consultor humano
+6. **Sem emojis em excesso** - Máximo 1 emoji por mensagem, se apropriado
+7. **Adapte-se** - Se o lead for direto, seja direto. Se for detalhista, dê detalhes.
+
+## O Que NÃO Fazer
+
+- Não faça promessas que não pode cumprir
+- Não pressione leads que precisam de tempo
+- Não ignore objeções - trate-as com empatia
+- Não fale de preços específicos - passe para especialista
+- Não use jargões técnicos desnecessários`;
 }
 
 // =============================================================================

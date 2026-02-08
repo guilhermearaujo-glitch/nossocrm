@@ -23,7 +23,11 @@ import { ZeroConfigMode } from './modes/ZeroConfigMode';
 import { TemplateSelectionMode } from './modes/TemplateSelectionMode';
 import { AutoLearnMode } from './modes/AutoLearnMode';
 import { AdvancedMode } from './modes/AdvancedMode';
-import { useAIConfigQuery, useUpdateAIConfigMutation } from '@/lib/query/hooks/useAIConfigQuery';
+import {
+  useAIConfigQuery,
+  useUpdateAIConfigMutation,
+  useProvisionStagesMutation,
+} from '@/lib/query/hooks/useAIConfigQuery';
 import { useCRM } from '@/context/CRMContext';
 
 // =============================================================================
@@ -34,6 +38,7 @@ export function AIAgentConfigSection() {
   const { aiKeyConfigured } = useCRM();
   const { data: config, isLoading, error } = useAIConfigQuery();
   const updateConfig = useUpdateAIConfigMutation();
+  const provisionStages = useProvisionStagesMutation();
 
   const [selectedMode, setSelectedMode] = useState<AIConfigMode | null>(null);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
@@ -50,6 +55,13 @@ export function AIAgentConfigSection() {
     // Persist mode change
     try {
       await updateConfig.mutateAsync({ ai_config_mode: mode });
+
+      // If switching to zero_config (Automático), provision stage configs automatically
+      if (mode === 'zero_config') {
+        console.log('[AIAgentConfig] Provisioning stage configs for zero_config mode...');
+        const result = await provisionStages.mutateAsync();
+        console.log('[AIAgentConfig] Provisioning result:', result);
+      }
     } catch (e) {
       console.error('[AIAgentConfig] Failed to update mode:', e);
     }

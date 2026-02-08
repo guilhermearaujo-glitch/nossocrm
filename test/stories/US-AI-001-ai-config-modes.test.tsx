@@ -26,6 +26,7 @@ vi.mock('@/context/CRMContext', () => ({
 }));
 
 const mockUpdateConfig = vi.fn().mockResolvedValue({});
+const mockProvisionStages = vi.fn().mockResolvedValue({});
 
 vi.mock('@/lib/query/hooks/useAIConfigQuery', () => ({
   useAIConfigQuery: () => ({
@@ -35,6 +36,10 @@ vi.mock('@/lib/query/hooks/useAIConfigQuery', () => ({
   }),
   useUpdateAIConfigMutation: () => ({
     mutateAsync: mockUpdateConfig,
+    isPending: false,
+  }),
+  useProvisionStagesMutation: () => ({
+    mutateAsync: mockProvisionStages,
     isPending: false,
   }),
 }));
