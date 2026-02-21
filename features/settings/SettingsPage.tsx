@@ -15,6 +15,8 @@ import { AICenterSettings } from './AICenterSettings';
 import { UsersPage } from './UsersPage';
 import { useAuth } from '@/context/AuthContext';
 import { Settings as SettingsIcon, Users, Database, Sparkles, Plug, Package, Building2 } from 'lucide-react';
+import { SelectField } from '@/components/ui/FormField';
+import { Button } from '@/components/ui/button';
 
 type SettingsTab = 'general' | 'products' | 'business-units' | 'integrations' | 'ai' | 'data' | 'users';
 
@@ -49,20 +51,22 @@ const GeneralSettings: React.FC<GeneralSettingsProps> = ({ hash, isAdmin }) => {
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
             Escolha qual tela deve abrir quando você iniciar o CRM.
           </p>
-          <select
-            aria-label="Selecionar página inicial"
+          <SelectField
+            label="Página Inicial"
+            containerClassName="max-w-xs"
+            options={[
+              { value: '/dashboard', label: 'Dashboard' },
+              { value: '/inbox-list', label: 'Inbox (Lista)' },
+              { value: '/inbox-focus', label: 'Inbox (Foco)' },
+              { value: '/boards', label: 'Boards (Kanban)' },
+              { value: '/contacts', label: 'Contatos' },
+              { value: '/activities', label: 'Atividades' },
+              { value: '/reports', label: 'Relatórios' },
+            ]}
             value={controller.defaultRoute}
             onChange={(e) => controller.setDefaultRoute(e.target.value)}
-            className="w-full max-w-xs px-4 py-2.5 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/10 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 text-slate-900 dark:text-white transition-all"
-          >
-            <option value="/dashboard">Dashboard</option>
-            <option value="/inbox-list">Inbox (Lista)</option>
-            <option value="/inbox-focus">Inbox (Foco)</option>
-            <option value="/boards">Boards (Kanban)</option>
-            <option value="/contacts">Contatos</option>
-            <option value="/activities">Atividades</option>
-            <option value="/reports">Relatórios</option>
-          </select>
+            aria-label="Selecionar página inicial"
+          />
         </div>
       </div>
 
@@ -143,18 +147,15 @@ const IntegrationsSettings: React.FC = () => {
         ] as const).map((t) => {
           const active = subTab === t.id;
           return (
-            <button
+            <Button
               key={t.id}
               type="button"
+              variant={active ? 'default' : 'outline'}
+              size="sm"
               onClick={() => setSubTabAndHash(t.id)}
-              className={`px-3 py-2 rounded-xl text-sm font-semibold border transition-colors ${
-                active
-                  ? 'border-primary-500/50 bg-primary-500/10 text-primary-700 dark:text-primary-300'
-                  : 'border-slate-200 dark:border-white/10 bg-white dark:bg-white/5 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10'
-              }`}
             >
               {t.label}
-            </button>
+            </Button>
           );
         })}
       </div>

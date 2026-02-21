@@ -3,6 +3,11 @@ import { fileURLToPath } from "url";
 import type { NextConfig } from "next";
 
 const configDir = path.dirname(fileURLToPath(import.meta.url));
+// When running from a git worktree inside .claude/worktrees/, node_modules live
+// 3 levels up at the repo root. Turbopack needs an explicit root to resolve them.
+const repoRoot = configDir.includes('/.claude/worktrees/')
+  ? path.resolve(configDir, '../../../')
+  : configDir;
 
 const nextConfig: NextConfig = {
   // Otimiza imports de bibliotecas com barrel files (index.js que re-exporta tudo)
@@ -17,7 +22,7 @@ const nextConfig: NextConfig = {
     ],
   },
   turbopack: {
-    root: configDir,
+    root: repoRoot,
   },
   async headers() {
     return [

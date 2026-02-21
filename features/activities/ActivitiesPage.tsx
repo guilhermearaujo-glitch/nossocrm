@@ -99,6 +99,7 @@ export const ActivitiesPage: React.FC = () => {
                         onDelete={handleDeleteActivity}
                         selectedActivities={selectedActivities}
                         onSelectActivity={handleSelectActivity}
+                        onAddActivity={handleNewActivity}
                     />
                 </>
             ) : (

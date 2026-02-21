@@ -144,6 +144,7 @@ export const ContactsPage: React.FC = () => {
                 sortOrder={controller.sortOrder}
                 onSort={controller.handleSort}
                 duplicateContactIds={duplicateContactIds}
+                onAddContact={controller.openCreateModal}
             />
 
             {/* T021: Pagination Controls */}

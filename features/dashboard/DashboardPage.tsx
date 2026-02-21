@@ -11,6 +11,7 @@ import { MessagingMetricsSection } from './components/MessagingMetricsSection';
 import { useDashboardMetrics, PeriodFilter, COMPARISON_LABELS } from './hooks/useDashboardMetrics';
 import { PeriodFilterSelect } from '@/components/filters/PeriodFilterSelect';
 import { LazyFunnelChart, ChartWrapper } from '@/components/charts';
+import { SkeletonStatCard } from '@/components/ui/Skeleton';
 
 
 /**
@@ -61,6 +62,7 @@ const DashboardPage: React.FC = () => {
   }, []);
 
   const {
+    isLoading,
     deals,
     wonDeals,
     wonRevenue,
@@ -141,48 +143,54 @@ const DashboardPage: React.FC = () => {
       </div>
 
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
-        <StatCard
-          title="Pipeline Total"
-          value={`$${pipelineValue.toLocaleString()}`}
-          subtext={pipelineChangeInfo.text}
-          subtextPositive={pipelineChangeInfo.isPositive}
-          icon={DollarSign}
-          color="bg-blue-500"
-          onClick={() => router.push('/boards')}
-          comparisonLabel={COMPARISON_LABELS[period]}
-        />
-        <StatCard
-          title="Negócios Ativos"
-          value={`${deals.length - wonDeals.length}`}
-          subtext={dealsChangeInfo.text}
-          subtextPositive={dealsChangeInfo.isPositive}
-          icon={Users}
-          color="bg-purple-500"
-          onClick={() => router.push('/boards?status=open')}
-          comparisonLabel={COMPARISON_LABELS[period]}
-        />
-        <StatCard
-          title="Conversão"
-          value={`${winRate.toFixed(1)}%`}
-          subtext={winRateChangeInfo.text}
-          subtextPositive={winRateChangeInfo.isPositive}
-          icon={Target}
-          color="bg-emerald-500"
-          onClick={() => router.push('/reports')}
-          comparisonLabel={COMPARISON_LABELS[period]}
-        />
-        <StatCard
-          title="Receita (Ganha)"
-          value={`$${wonRevenue.toLocaleString()}`}
-          subtext={revenueChangeInfo.text}
-          subtextPositive={revenueChangeInfo.isPositive}
-          icon={TrendingUp}
-          color="bg-orange-500"
-          onClick={() => router.push('/boards?status=won&view=list')}
-          comparisonLabel={COMPARISON_LABELS[period]}
-        />
-      </div>
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+          {Array.from({ length: 4 }).map((_, i) => <SkeletonStatCard key={i} />)}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+          <StatCard
+            title="Pipeline Total"
+            value={`$${pipelineValue.toLocaleString()}`}
+            subtext={pipelineChangeInfo.text}
+            subtextPositive={pipelineChangeInfo.isPositive}
+            icon={DollarSign}
+            variant="info"
+            onClick={() => router.push('/boards')}
+            comparisonLabel={COMPARISON_LABELS[period]}
+          />
+          <StatCard
+            title="Negócios Ativos"
+            value={`${deals.length - wonDeals.length}`}
+            subtext={dealsChangeInfo.text}
+            subtextPositive={dealsChangeInfo.isPositive}
+            icon={Users}
+            variant="purple"
+            onClick={() => router.push('/boards?status=open')}
+            comparisonLabel={COMPARISON_LABELS[period]}
+          />
+          <StatCard
+            title="Conversão"
+            value={`${winRate.toFixed(1)}%`}
+            subtext={winRateChangeInfo.text}
+            subtextPositive={winRateChangeInfo.isPositive}
+            icon={Target}
+            variant="success"
+            onClick={() => router.push('/reports')}
+            comparisonLabel={COMPARISON_LABELS[period]}
+          />
+          <StatCard
+            title="Receita (Ganha)"
+            value={`$${wonRevenue.toLocaleString()}`}
+            subtext={revenueChangeInfo.text}
+            subtextPositive={revenueChangeInfo.isPositive}
+            icon={TrendingUp}
+            variant="warning"
+            onClick={() => router.push('/boards?status=won&view=list')}
+            comparisonLabel={COMPARISON_LABELS[period]}
+          />
+        </div>
+      )}
 
       {/* Wallet Health Section - Compact */}
       <div className="space-y-3 shrink-0">

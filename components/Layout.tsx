@@ -61,12 +61,36 @@ import { useUnreadCount } from '@/lib/query/hooks/useConversationsQuery';
 import { UIChat } from './ai/UIChat';
 
 import { NotificationPopover } from './notifications/NotificationPopover';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 
 /**
  * Props do componente Layout
  * @interface LayoutProps
  * @property {React.ReactNode} children - Conteúdo da página
  */
+const PAGE_TITLES: Record<string, string> = {
+  '/inbox': 'Inbox',
+  '/messaging': 'Mensagens',
+  '/dashboard': 'Visão Geral',
+  '/boards': 'Boards',
+  '/pipeline': 'Boards',
+  '/contacts': 'Contatos',
+  '/activities': 'Atividades',
+  '/decisions': 'Decisões',
+  '/reports': 'Relatórios',
+  '/settings': 'Configurações',
+  '/profile': 'Perfil',
+  '/ai': 'Assistente IA',
+};
+
+const getPageTitle = (pathname: string): string => {
+  // Exact match first
+  if (PAGE_TITLES[pathname]) return PAGE_TITLES[pathname];
+  // Prefix match (e.g., /settings/ai → Configurações)
+  const prefix = Object.keys(PAGE_TITLES).find(key => pathname.startsWith(key + '/'));
+  return prefix ? PAGE_TITLES[prefix] : '';
+};
+
 interface LayoutProps {
   children: React.ReactNode;
 }
@@ -287,31 +311,38 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           ].map((item) => {
             if (sidebarCollapsed) {
               return (
-                <Link
-                  key={item.to}
-                  href={item.to}
-                  onMouseEnter={() => item.prefetch && prefetchRoute(item.prefetch)}
-                  onClick={() => setClickedPath(item.to)}
-                  className={(() => {
-                    const isActive = pathname === item.to || (item.to === '/boards' && pathname === '/pipeline');
-                    const wasJustClicked = clickedPath === item.to;
-                    // If user clicked on a DIFFERENT item, immediately deactivate this one
-                    const anotherItemWasClicked = clickedPath && clickedPath !== item.to;
-                    const isActuallyActive = anotherItemWasClicked ? false : (isActive || wasJustClicked);
-                    return `relative w-10 h-10 rounded-lg flex items-center justify-center ${isActuallyActive
-                      ? 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-900/50'
-                      : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
-                      }`;
-                  })()}
-                  title={item.label}
-                >
-                  <item.icon size={20} />
-                  {item.badge && item.badge > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center px-0.5 text-[9px] font-bold text-white bg-red-500 rounded-full shadow-sm">
-                      {item.badge > 99 ? '99+' : item.badge}
-                    </span>
-                  )}
-                </Link>
+                <TooltipProvider key={item.to} delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Link
+                        href={item.to}
+                        onMouseEnter={() => item.prefetch && prefetchRoute(item.prefetch)}
+                        onClick={() => setClickedPath(item.to)}
+                        className={(() => {
+                          const isActive = pathname === item.to || (item.to === '/boards' && pathname === '/pipeline');
+                          const wasJustClicked = clickedPath === item.to;
+                          // If user clicked on a DIFFERENT item, immediately deactivate this one
+                          const anotherItemWasClicked = clickedPath && clickedPath !== item.to;
+                          const isActuallyActive = anotherItemWasClicked ? false : (isActive || wasJustClicked);
+                          return `relative w-10 h-10 rounded-lg flex items-center justify-center ${isActuallyActive
+                            ? 'bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-200 dark:border-primary-900/50'
+                            : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 hover:text-slate-900 dark:hover:text-white'
+                            }`;
+                        })()}
+                      >
+                        <item.icon size={20} />
+                        {item.badge && item.badge > 0 && (
+                          <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] flex items-center justify-center px-0.5 text-[9px] font-bold text-white bg-red-500 rounded-full shadow-sm">
+                            {item.badge > 99 ? '99+' : item.badge}
+                          </span>
+                        )}
+                      </Link>
+                    </TooltipTrigger>
+                    <TooltipContent side="right">
+                      {item.label}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               );
             }
 
@@ -441,7 +472,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </div>
 
           {/* Header */}
-          <header className="h-16 glass border-b border-[var(--color-border-subtle)] flex items-center justify-end px-6 z-40 shrink-0" role="banner">
+          <header className="h-16 glass border-b border-[var(--color-border-subtle)] flex items-center justify-between px-6 z-40 shrink-0" role="banner">
+            <h1 className="text-lg font-semibold font-display text-slate-900 dark:text-white">
+              {getPageTitle(pathname)}
+            </h1>
             <div className="flex items-center gap-4">
               <button
                 type="button"
@@ -454,16 +488,18 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 <Sparkles size={20} aria-hidden="true" />
               </button>
 
-              <button
-                type="button"
-                onClick={toggleDebugMode}
-                className={`p-2 rounded-full transition-all active:scale-95 focus-visible-ring ${debugEnabled
-                  ? 'text-purple-600 bg-purple-100 dark:text-purple-400 dark:bg-purple-900/30 ring-2 ring-purple-400/50'
-                  : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
-                  }`}
-              >
-                <Bug size={20} aria-hidden="true" />
-              </button>
+              {process.env.NODE_ENV === 'development' && (
+                <button
+                  type="button"
+                  onClick={toggleDebugMode}
+                  className={`p-2 rounded-full transition-all active:scale-95 focus-visible-ring ${debugEnabled
+                    ? 'text-purple-600 bg-purple-100 dark:text-purple-400 dark:bg-purple-900/30 ring-2 ring-purple-400/50'
+                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10'
+                    }`}
+                >
+                  <Bug size={20} aria-hidden="true" />
+                </button>
+              )}
 
               <NotificationPopover />
               <button
