@@ -1,7 +1,7 @@
 /**
  * @fileoverview WhatsApp Business Calling API Service
  *
- * Wrapper para Meta Graph API v23.0 — chamadas VoIP via WebRTC.
+ * Wrapper para Meta Graph API v25.0 — chamadas VoIP via WebRTC.
  * Suporta BIC (Business-Initiated Calls) e UIC (User-Initiated Calls).
  *
  * @module lib/voice/whatsapp-calling.service
@@ -114,7 +114,11 @@ export async function initiateCall(
       body: JSON.stringify({
         to: phone,
         action: 'connect',
-        sdp: sdpOffer,
+        // v25.0 session format (replaces deprecated flat `sdp` field)
+        session: {
+          sdp_type: 'offer',
+          sdp: sdpOffer,
+        },
       }),
     }
   );
@@ -148,7 +152,11 @@ export async function preAcceptCall(
       body: JSON.stringify({
         call_id: callId,
         action: 'pre_accept',
-        sdp: sdpAnswer,
+        // v25.0 session format
+        session: {
+          sdp_type: 'answer',
+          sdp: sdpAnswer,
+        },
       }),
     }
   );
@@ -172,7 +180,11 @@ export async function acceptCall(
       body: JSON.stringify({
         call_id: callId,
         action: 'accept',
-        sdp: sdpAnswer,
+        // v25.0 session format
+        session: {
+          sdp_type: 'answer',
+          sdp: sdpAnswer,
+        },
       }),
     }
   );

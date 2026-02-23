@@ -49,6 +49,12 @@ interface MetaWebhookCallValue {
   direction: "inbound" | "outbound";
   from?: string;
   to?: string;
+  /** v25.0 session format (preferred) */
+  session?: {
+    sdp: string;
+    sdp_type?: "offer" | "answer";
+  };
+  /** @deprecated v23.0 flat sdp — kept for backward compat during transition */
   sdp?: string;
   disconnect_reason?: string;
   timestamp?: string;
@@ -1623,7 +1629,9 @@ async function handleCallConnect(
   channel: { id: string; organization_id: string },
   callValue: MetaWebhookCallValue
 ) {
-  const { call_id, direction, sdp, from, to } = callValue;
+  const { call_id, direction, from, to } = callValue;
+  // v25.0: SDP lives in session.sdp; fallback to flat sdp for v23 backward compat
+  const sdp = callValue.session?.sdp ?? callValue.sdp;
 
   if (direction === "outbound") {
     // Lead answered our call — update existing row with SDP answer
