@@ -7,6 +7,7 @@
  * - Automatic cache invalidation
  * - Ready for Realtime integration
  */
+import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, DEALS_VIEW_KEY } from '../index';
 import { dealsService, contactsService, companiesService, boardStagesService } from '@/lib/supabase';
@@ -14,6 +15,12 @@ import { useAuth } from '@/context/AuthContext';
 import type { Deal, DealView, DealItem } from '@/types';
 
 // ============ QUERY HOOKS ============
+
+// Stable selector factory — must be at module level to avoid new reference per render
+const makeSelectByBoard = (boardId: string) => (data: DealView[]) => {
+  if (!boardId || boardId.startsWith('temp-')) return [];
+  return data.filter(d => d.boardId === boardId);
+};
 
 export interface DealsFilters {
   boardId?: string;
@@ -169,6 +176,7 @@ export const useDeal = (id: string | undefined) => {
  */
 export const useDealsByBoard = (boardId: string) => {
   const { user, loading: authLoading } = useAuth();
+  const selectForBoard = useMemo(() => makeSelectByBoard(boardId), [boardId]);
   return useQuery<DealView[], Error, DealView[]>({
     // CRÍTICO: Usar a mesma query key que useDealsView para compartilhar cache
     queryKey: [...queryKeys.deals.lists(), 'view'],
@@ -217,10 +225,7 @@ export const useDealsByBoard = (boardId: string) => {
       return enrichedDeals;
     },
     // Filtrar por boardId no cliente (compartilha cache mas retorna só os deals do board)
-    select: (data) => {
-      if (!boardId || boardId.startsWith('temp-')) return [];
-      return data.filter(d => d.boardId === boardId);
-    },
+    select: selectForBoard,
     staleTime: 2 * 60 * 1000, // 2 minutes (same as useDealsView)
     enabled: !authLoading && !!user && !!boardId && !boardId.startsWith('temp-'),
   });
