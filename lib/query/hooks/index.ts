@@ -12,6 +12,7 @@ export {
   useDeal,
   useDealsByBoard,
   useCreateDeal,
+  useCreateDealWithContact,
   useUpdateDeal,
   useUpdateDealStatus,
   useDeleteDeal,
@@ -213,5 +214,36 @@ export {
   type AIConversationStats,
   type AIHITLStats,
 } from './useAIMetricsQuery';
+
+// =============================================================================
+// SETTINGS / ORG MODULE
+// =============================================================================
+
+// Lifecycle Stages
+export {
+  useLifecycleStages,
+  useCreateLifecycleStage,
+  useUpdateLifecycleStage,
+  useDeleteLifecycleStage,
+  useReorderLifecycleStages,
+} from './useLifecycleStagesQuery';
+
+// Products
+export {
+  useProducts,
+  useActiveProducts,
+  useCreateProduct,
+  useUpdateProduct,
+  useDeleteProduct,
+} from './useProductsQuery';
+
+// Org Settings (user prefs + org AI config)
+export {
+  useOrgSettings,
+  useUpdateUserSettings,
+  useUpdateAISettings,
+  type MergedOrgSettings,
+  type OrgAISettings,
+} from './useOrgSettingsQuery';
 
 // =============================================================================

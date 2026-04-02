@@ -12,7 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { queryKeys, DEALS_VIEW_KEY } from '../index';
 import { dealsService, contactsService, companiesService, boardStagesService } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
-import type { Deal, DealView, DealItem } from '@/types';
+import type { Deal, DealView, DealItem, Contact } from '@/types';
 
 // ============ QUERY HOOKS ============
 
@@ -608,4 +608,96 @@ export const usePrefetchDeal = () => {
       staleTime: 5 * 60 * 1000,
     });
   };
+};
+
+/**
+ * Hook to create a deal together with an optional contact and/or company.
+ * Performs an optimistic insert into DEALS_VIEW_KEY cache and replaces the
+ * temporary entry with the real server response on success.
+ */
+export const useCreateDealWithContact = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      deal,
+      relatedData,
+    }: {
+      deal: Omit<Deal, 'id' | 'createdAt'>;
+      relatedData?: { contact?: Partial<Contact>; companyName?: string };
+    }) => {
+      let finalCompanyId = deal.companyId;
+      let finalContactId = deal.contactId;
+
+      // Create company if name provided
+      if (relatedData?.companyName) {
+        const { data: company } = await companiesService.create({ name: relatedData.companyName });
+        if (company) finalCompanyId = company.id;
+      }
+
+      // Create contact if provided
+      if (relatedData?.contact?.name) {
+        const { data: contact } = await contactsService.create({
+          name: relatedData.contact.name,
+          email: relatedData.contact.email || '',
+          phone: relatedData.contact.phone || '',
+          companyId: finalCompanyId,
+          status: 'ACTIVE',
+          stage: 'LEAD',
+        });
+        if (contact) finalContactId = contact.id;
+      }
+
+      const { data: createdDeal, error } = await dealsService.create({
+        ...deal,
+        companyId: finalCompanyId,
+        contactId: finalContactId,
+      });
+      if (error) throw error;
+      return createdDeal!;
+    },
+    onMutate: async ({ deal, relatedData }) => {
+      const tempId = `temp-${Date.now()}`;
+      const tempDeal: DealView = {
+        ...(deal as any),
+        id: tempId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        contactName: relatedData?.contact?.name || 'Sem contato',
+        contactEmail: relatedData?.contact?.email || '',
+        contactPhone: '',
+        companyName: relatedData?.companyName || 'Sem empresa',
+        clientCompanyName: relatedData?.companyName || 'Sem empresa',
+        stageLabel: 'Novo',
+        isWon: false,
+        isLost: false,
+      } as DealView;
+      queryClient.setQueryData<DealView[]>(DEALS_VIEW_KEY, (old = []) => [tempDeal, ...old]);
+      return { tempId };
+    },
+    onSuccess: (data, _vars, context) => {
+      const { tempId } = context as { tempId: string };
+      const dealAsView: DealView = {
+        ...data,
+        companyName: '',
+        contactName: '',
+        contactEmail: '',
+        contactPhone: '',
+        stageLabel: '',
+      } as DealView;
+      queryClient.setQueryData<DealView[]>(DEALS_VIEW_KEY, (old = []) => {
+        const withoutTemp = old.filter((d) => d.id !== tempId);
+        return [dealAsView, ...withoutTemp];
+      });
+    },
+    onError: (_err, _vars, context) => {
+      const { tempId } = context as { tempId: string };
+      queryClient.setQueryData<DealView[]>(DEALS_VIEW_KEY, (old = []) =>
+        old.filter((d) => d.id !== tempId)
+      );
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.deals.all });
+    },
+  });
 };

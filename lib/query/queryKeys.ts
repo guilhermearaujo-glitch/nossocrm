@@ -206,6 +206,21 @@ export const queryKeys = {
         all: ['instanceFlags'] as const,
         byOrg: (orgId: string) => ['instanceFlags', orgId] as const,
     },
+
+    /**
+     * Lifecycle stages query keys.
+     */
+    lifecycleStages: createQueryKeys('lifecycleStages'),
+
+    /**
+     * Products / catalog query keys.
+     */
+    products: createQueryKeys('products'),
+
+    /**
+     * Org-level + user settings query keys.
+     */
+    orgSettings: createQueryKeys('orgSettings'),
 };
 
 /**
