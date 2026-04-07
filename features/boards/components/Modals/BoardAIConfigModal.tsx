@@ -1,9 +1,9 @@
-import React, { useId, useState } from 'react';
+import React, { useEffect, useId, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { StageAIConfig } from '@/features/settings/components/StageAIConfig';
 import { Board } from '@/types';
 import { Sparkles } from 'lucide-react';
-import { useUpdateBoard } from '@/lib/query/hooks/useBoardsQuery';
+import { useBoards, useUpdateBoard } from '@/lib/query/hooks/useBoardsQuery';
 
 interface BoardAIConfigModalProps {
   isOpen: boolean;
@@ -24,10 +24,16 @@ export const BoardAIConfigModal: React.FC<BoardAIConfigModalProps> = ({
 }) => {
   const headingId = useId();
   const updateBoard = useUpdateBoard();
-  const [goalStageId, setGoalStageId] = useState<string>(board.agentGoalStageId ?? '');
+  const { data: boards } = useBoards();
+  const liveBoard = boards?.find(b => b.id === board.id) ?? board;
+  const [goalStageId, setGoalStageId] = useState<string>(liveBoard.agentGoalStageId ?? '');
+
+  useEffect(() => {
+    setGoalStageId(liveBoard.agentGoalStageId ?? '');
+  }, [liveBoard.agentGoalStageId]);
 
   // Convert board stages to format expected by StageAIConfig
-  const stages = board.stages.map((stage, index) => ({
+  const stages = liveBoard.stages.map((stage, index) => ({
     id: stage.id,
     name: stage.label,
     order: index,
@@ -82,7 +88,7 @@ export const BoardAIConfigModal: React.FC<BoardAIConfigModalProps> = ({
             className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             <option value="">Sem limite (age em todos os estágios com AI habilitado)</option>
-            {board.stages.map(stage => (
+            {liveBoard.stages.map(stage => (
               <option key={stage.id} value={stage.id}>
                 {stage.label}
               </option>
@@ -94,7 +100,7 @@ export const BoardAIConfigModal: React.FC<BoardAIConfigModalProps> = ({
         </div>
 
         {/* Stage AI Config */}
-        <StageAIConfig boardId={board.id} stages={stages} />
+        <StageAIConfig boardId={board.id} stages={stages} goalStageId={goalStageId || undefined} />
       </div>
     </Modal>
   );
