@@ -87,7 +87,8 @@ export function useConversations(filters?: ConversationFilters) {
             id,
             name,
             email,
-            phone
+            phone,
+            ai_paused
           ),
           assigned_user:profiles!assigned_user_id (
             id,
@@ -133,10 +134,10 @@ export function useConversations(filters?: ConversationFilters) {
       if (error) throw error;
 
       // Transform to ConversationView
-      return (data || []).map((row): ConversationView => {
+      const result = (data || []).map((row): ConversationView => {
         const base = transform(row as DbMessagingConversation);
         const channel = row.channel as { id: string; name: string; channel_type: string; provider: string } | null;
-        const contact = row.contact as { id: string; name: string; email: string; phone: string } | null;
+        const contact = row.contact as { id: string; name: string; email: string; phone: string; ai_paused?: boolean } | null;
         const assignedUser = row.assigned_user as { id: string; name: string; avatar_url: string } | null;
 
         return {
@@ -146,12 +147,18 @@ export function useConversations(filters?: ConversationFilters) {
           contactName: contact?.name,
           contactEmail: contact?.email,
           contactPhone: contact?.phone,
+          contactAiPaused: contact?.ai_paused ?? false,
           assignedUserName: assignedUser?.name,
           assignedUserAvatar: assignedUser?.avatar_url,
-          isWindowExpired: checkWindowExpired(base),
+          isWindowExpired: checkWindowExpired(base, channel?.provider),
           windowMinutesRemaining: getWindowMinutes(base),
         };
       });
+
+      if (filters?.channelType) {
+        return result.filter((conv) => conv.channelType === filters.channelType);
+      }
+      return result;
     },
     staleTime: 30 * 1000, // 30 seconds
     enabled: !authLoading && !!user && !!profile?.organization_id,
@@ -189,7 +196,8 @@ export function useConversation(conversationId: string | undefined) {
             id,
             name,
             email,
-            phone
+            phone,
+            ai_paused
           ),
           assigned_user:profiles!assigned_user_id (
             id,
@@ -205,7 +213,7 @@ export function useConversation(conversationId: string | undefined) {
 
       const base = transform(data as DbMessagingConversation);
       const channel = data.channel as { id: string; name: string; channel_type: string; provider: string } | null;
-      const contact = data.contact as { id: string; name: string; email: string; phone: string } | null;
+      const contact = data.contact as { id: string; name: string; email: string; phone: string; ai_paused?: boolean } | null;
       const assignedUser = data.assigned_user as { id: string; name: string; avatar_url: string } | null;
 
       return {
@@ -215,9 +223,10 @@ export function useConversation(conversationId: string | undefined) {
         contactName: contact?.name,
         contactEmail: contact?.email,
         contactPhone: contact?.phone,
+        contactAiPaused: contact?.ai_paused ?? false,
         assignedUserName: assignedUser?.name,
         assignedUserAvatar: assignedUser?.avatar_url,
-        isWindowExpired: checkWindowExpired(base),
+        isWindowExpired: checkWindowExpired(base, channel?.provider),
         windowMinutesRemaining: getWindowMinutes(base),
       };
     },

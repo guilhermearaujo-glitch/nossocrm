@@ -67,7 +67,7 @@ export const ConversationList = memo(function ConversationList({
     status: statusFilter,
     businessUnitId,
     search: searchQuery || undefined,
-    channelId: channelFilter !== 'all' ? channelFilter : undefined,
+    channelType: channelFilter !== 'all' ? channelFilter : undefined,
     hasUnread: showUnreadOnly || undefined,
   }), [statusFilter, businessUnitId, searchQuery, channelFilter, showUnreadOnly]);
 

@@ -395,7 +395,6 @@ export function useUpdateMessageStatus() {
 
 /**
  * Retry a failed message.
- * TODO: Implement API endpoint for retry
  */
 export function useRetryMessage() {
   const queryClient = useQueryClient();
