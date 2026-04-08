@@ -337,12 +337,15 @@ Deno.serve(async (req) => {
   // Log instance name from payload (truncated to prevent log injection)
   const instanceName = (payload as { instance?: string }).instance ?? "";
 
+  // Normalize event name: Evolution v2 sends UPPERCASE, some versions use lowercase
+  const eventNorm = payload.event?.toLowerCase().replace(/_/g, ".");
+
   try {
-    if (payload.event === "messages.upsert") {
+    if (eventNorm === "messages.upsert") {
       await handleMessagesUpsert(supabase, channel, payload as EvolutionUpsertPayload);
-    } else if (payload.event === "messages.update") {
+    } else if (eventNorm === "messages.update") {
       await handleMessagesUpdate(supabase, payload as EvolutionUpdatePayload);
-    } else if (payload.event === "connection.update") {
+    } else if (eventNorm === "connection.update") {
       await handleConnectionUpdate(supabase, channel, payload as EvolutionConnectionUpdatePayload);
     } else {
       console.log(`[Evolution] Unhandled event: ${payload.event} instance: ${instanceName.slice(0, 64)}`);
@@ -445,12 +448,6 @@ async function handleMessagesUpsert(
           name: contactName,
           phone: phone,
           source: "whatsapp",
-          metadata: {
-            auto_created: true,
-            created_from: "messaging_webhook_evolution",
-            whatsapp_name: pushName,
-            business_unit_id: channel.business_unit_id,
-          },
         })
         .select("id")
         .single();
@@ -694,12 +691,6 @@ async function autoCreateDeal(
         contact_id: params.contactId,
         title: `${params.contactName} - WhatsApp`,
         value: 0,
-        source: "whatsapp",
-        metadata: {
-          auto_created: true,
-          created_from: "messaging_webhook_evolution",
-          conversation_id: params.conversationId,
-        },
       })
       .select("id")
       .single();
