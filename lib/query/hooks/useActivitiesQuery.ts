@@ -136,6 +136,7 @@ interface CreateActivityParams {
  */
 export const useCreateActivity = () => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   return useMutation({
     mutationFn: async ({ activity }: CreateActivityParams) => {
@@ -190,8 +191,8 @@ export const useCreateActivity = () => {
         fetch("https://n8n-production-9012a.up.railway.app/webhook/0ebbdfef-a03e-4109-bdce-7d00e70218f0", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: data.title, description: data.description || data.dealTitle, start_time: data.date, end_time: new Date(new Date(data.date).getTime() + 3600000).toISOString(), attendees: "guilherme.araujo@previnamed.io" })
-        }).catch(() => {});
+          body: JSON.stringify({ title: data.title, description: data.description || data.dealTitle, start_time: data.date, end_time: new Date(new Date(data.date).getTime() + 3600000).toISOString(), attendees: user?.email || "" })
+        }).catch((err) => console.error("[Calendar] Webhook error:", err));
       }
     },
     onError: (_error, _params, context) => {
