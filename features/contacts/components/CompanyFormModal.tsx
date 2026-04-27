@@ -101,7 +101,7 @@ export const CompanyFormModal: React.FC<CompanyFormModalProps> = ({
           label="Nº de Funcionários"
           placeholder="Ex: 85"
           type="number"
-          error={errors.num_funcionarios}
+          error={errors.num_funcionarios as any}
           registration={register('num_funcionarios')}
         />
 
