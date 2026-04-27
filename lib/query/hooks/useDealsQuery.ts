@@ -518,7 +518,7 @@ export const useAddDealItem = () => {
       return { dealId, item: data! };
     },
     onSuccess: (data, { dealId }) => {
-      queryClient.setQueryData(DEALS_VIEW_KEY, (old) => {
+      queryClient.setQueryData<any[]>(DEALS_VIEW_KEY, (old) => {
         if (!old) return old;
         return old.map((d) =>
           d.id === dealId ? { ...d, items: [...(d.items ?? []), data.item] } : d
@@ -545,7 +545,7 @@ export const useRemoveDealItem = () => {
       return { dealId, itemId };
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(DEALS_VIEW_KEY, (old) => {
+      queryClient.setQueryData<any[]>(DEALS_VIEW_KEY, (old) => {
         if (!old) return old;
         return old.map((d) =>
           d.id === data.dealId ? { ...d, items: (d.items ?? []).filter((i) => i.id !== data.itemId) } : d
