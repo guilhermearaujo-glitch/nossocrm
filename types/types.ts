@@ -115,6 +115,7 @@ export interface Organization {
   name: string;
   industry?: string;
   website?: string;
+  custom_fields?: Record<string, unknown>;
   deletedAt?: string;
   createdAt: string;
   updatedAt?: string;
@@ -140,6 +141,7 @@ export interface CRMCompany {
   name: string;
   industry?: string;
   website?: string;
+  custom_fields?: Record<string, unknown>;
   createdAt: string;
   updatedAt?: string;
 }
