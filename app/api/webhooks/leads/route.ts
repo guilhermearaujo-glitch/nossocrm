@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       await supabase.from('deals').insert({
         id: crypto.randomUUID(),
         organization_id: ORG_ID,
-        name: `Lead: ${name}`,
+        title: `Lead: ${name}`,
         contact_id: contact.id,
         board_id: board.id,
         stage_id: firstStage.id,
