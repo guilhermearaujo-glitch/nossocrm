@@ -89,6 +89,7 @@ export interface DbContact {
  * @interface DbCRMCompany
  */
 export interface DbCRMCompany {
+  custom_fields?: Record<string, unknown>;
   /** ID único da empresa (UUID). */
   id: string;
   /** ID da organização/tenant. */
